@@ -1,0 +1,136 @@
+Hips - Articulation Body, Mass: 25, Root
+
+
+
+Spine(Waist Bottom) - Articulation Body, Mass: 5, Articulation Joint Type: Spherical
+
+
+
+Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spherical
+
+
+
+Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Spherical
+
+
+
+Neck - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+
+
+
+Head(Neck Top) - Articulation Body, Mass: 9.6, Articulation Joint Type: Spherical
+
+
+
+Left leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
+
+
+
+Left knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
+
+
+
+Left ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
+
+
+
+Toes\_L(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+
+
+
+Right leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
+
+
+
+Right knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
+
+
+
+Right ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
+
+
+
+Toes\_R(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+
+
+
+Left shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
+
+
+
+Left arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+
+
+
+Left elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute
+
+
+
+Left wrist -Articulation Body, Mass: 1, Articulation Joint Type: Revolute
+
+
+
+Right shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
+
+
+
+Right arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+
+
+
+Right elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute
+
+
+
+Right wrist - Articulation Body, Mass: 1.0, Articulation Joint Type: Revolute
+
+
+
+Tail\_00\_X(Base) - Articulation Body, Mass: 1.5, Articulation Joint Type: Spherical
+
+
+
+Tail\_01\_X - Articulation Body, Mass: 1, Articulation Joint Type: Spherical
+
+
+
+Tail\_02\_X - Articulation Body, Mass: 0.65, Articulation Joint Type: Spherical
+
+
+
+Tail\_03\_X(Tip) - Articulation Body, Mass: 0.5, Articulation Joint Type: Spherical
+
+
+
+Breast1\_L(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
+
+
+
+Breast2\_L(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
+
+
+
+Breast3\_L(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
+
+
+
+Breast1\_R(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
+
+
+
+Breast2\_R(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
+
+
+
+Breast3\_R(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
+
+
+
+Butt\_L - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
+
+
+
+Butt\_R - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
+
+
+
