@@ -3,134 +3,624 @@ Hips - Articulation Body, Mass: 25, Root
 
 
 Spine(Waist Bottom) - Articulation Body, Mass: 5, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Neck - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Head(Neck Top) - Articulation Body, Mass: 9.6, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Left leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Left knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Left ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Toes\_L(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+Toes_L(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Right leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Right knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Right ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Toes\_R(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+Toes_R(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Left shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Left arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Left elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute
-
+Left elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, Anchor Rotation: x=0 y=270 z=0
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 Left wrist -Articulation Body, Mass: 1, Articulation Joint Type: Revolute
-
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 Right shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
 Right arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Right elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute
-
+Right elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, Anchor Rotation: x=0 y=90 z=0
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 Right wrist - Articulation Body, Mass: 1.0, Articulation Joint Type: Revolute
+ X Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+
+
+Tail_00_X(Base) - Articulation Body, Mass: 1.5, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Tail\_00\_X(Base) - Articulation Body, Mass: 1.5, Articulation Joint Type: Spherical
+Tail_01_X - Articulation Body, Mass: 1, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Tail\_01\_X - Articulation Body, Mass: 1, Articulation Joint Type: Spherical
+Tail_02_X - Articulation Body, Mass: 0.65, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Tail\_02\_X - Articulation Body, Mass: 0.65, Articulation Joint Type: Spherical
+Tail_03_X(Tip) - Articulation Body, Mass: 0.5, Articulation Joint Type: Spherical
+ Y Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ Z Drive
+	Lower Limit:
+	upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
+ X Drive
+	Lower Limit:
+	Upper Limit:
+	Stiffness:
+	Damping:
+	Force Limit:
+	Target:
+	Target Velocity:
+	Drive Type:
 
 
 
-Tail\_03\_X(Tip) - Articulation Body, Mass: 0.5, Articulation Joint Type: Spherical
+Breast1_L(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
 
 
 
-Breast1\_L(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
+Breast2_L(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
 
 
 
-Breast2\_L(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
+Breast3_L(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
 
 
 
-Breast3\_L(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
+Breast1_R(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
 
 
 
-Breast1\_R(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
+Breast2_R(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
 
 
 
-Breast2\_R(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
+Breast3_R(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
 
 
 
-Breast3\_R(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
+Butt_L - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
 
 
 
-Butt\_L - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
-
-
-
-Butt\_R - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
-
+Butt_R - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
 
 
