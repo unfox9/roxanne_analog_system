@@ -1,7 +1,5 @@
 Hips - Articulation Body, Mass: 25, Root
 
-
-
 Spine(Waist Bottom) - Articulation Body, Mass: 5, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -30,8 +28,6 @@ Spine(Waist Bottom) - Articulation Body, Mass: 5, Articulation Joint Type: Spher
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spherical
  Y Drive
@@ -62,8 +58,6 @@ Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spher
 	Target Velocity:
 	Drive Type:
 
-
-
 Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -93,9 +87,7 @@ Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Sp
 	Target Velocity:
 	Drive Type:
 
-
-
-Neck - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
+Neck - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
 	Upper Limit:
@@ -123,8 +115,6 @@ Neck - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Head(Neck Top) - Articulation Body, Mass: 9.6, Articulation Joint Type: Spherical
  Y Drive
@@ -155,8 +145,6 @@ Head(Neck Top) - Articulation Body, Mass: 9.6, Articulation Joint Type: Spherica
 	Target Velocity:
 	Drive Type:
 
-
-
 Left leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -186,8 +174,6 @@ Left leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
 	Target Velocity:
 	Drive Type:
 
-
-
 Left knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -198,8 +184,6 @@ Left knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Left ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
  X Drive
@@ -212,8 +196,6 @@ Left ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
 	Target Velocity:
 	Drive Type:
 
-
-
 Toes_L(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -224,8 +206,6 @@ Toes_L(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolut
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Right leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
  Y Drive
@@ -256,8 +236,6 @@ Right leg - Articulation Body, Mass: 15, Articulation Joint Type: Spherical
 	Target Velocity:
 	Drive Type:
 
-
-
 Right knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -268,8 +246,6 @@ Right knee - Articulation Body, Mass: 6, Articulation Joint Type: Revolute
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Right ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolute
  X Drive
@@ -282,8 +258,6 @@ Right ankle(Hock) - Articulation Body, Mass: 4, Articulation Joint Type: Revolut
 	Target Velocity:
 	Drive Type:
 
-
-
 Toes_R(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -294,8 +268,6 @@ Toes_R(Phalanges) - Articulation Body, Mass: 2, Articulation Joint Type: Revolut
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Left shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
  Y Drive
@@ -326,8 +298,6 @@ Left shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: S
 	Target Velocity:
 	Drive Type:
 
-
-
 Left arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -357,8 +327,6 @@ Left arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spheri
 	Target Velocity:
 	Drive Type:
 
-
-
 Left elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, Anchor Rotation: x=0 y=270 z=0
  X Drive
 	Lower Limit:
@@ -370,7 +338,6 @@ Left elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, An
 	Target Velocity:
 	Drive Type:
 
-
 Left wrist -Articulation Body, Mass: 1, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -381,7 +348,6 @@ Left wrist -Articulation Body, Mass: 1, Articulation Joint Type: Revolute
 	Target:
 	Target Velocity:
 	Drive Type:
-
 
 Right shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
  Y Drive
@@ -412,8 +378,6 @@ Right shoulder(Scapular) - Articulation Body, Mass: 3, Articulation Joint Type: 
 	Target Velocity:
 	Drive Type:
 
-
-
 Right arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -443,8 +407,6 @@ Right arm(Shoulder) - Articulation Body, Mass: 2, Articulation Joint Type: Spher
 	Target Velocity:
 	Drive Type:
 
-
-
 Right elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, Anchor Rotation: x=0 y=90 z=0
  X Drive
 	Lower Limit:
@@ -456,7 +418,6 @@ Right elbow - Articulation Body, Mass: 1.5, Articulation Joint Type: Revolute, A
 	Target Velocity:
 	Drive Type:
 
-
 Right wrist - Articulation Body, Mass: 1.0, Articulation Joint Type: Revolute
  X Drive
 	Lower Limit:
@@ -467,7 +428,6 @@ Right wrist - Articulation Body, Mass: 1.0, Articulation Joint Type: Revolute
 	Target:
 	Target Velocity:
 	Drive Type:
-
 
 Tail_00_X(Base) - Articulation Body, Mass: 1.5, Articulation Joint Type: Spherical
  Y Drive
@@ -498,8 +458,6 @@ Tail_00_X(Base) - Articulation Body, Mass: 1.5, Articulation Joint Type: Spheric
 	Target Velocity:
 	Drive Type:
 
-
-
 Tail_01_X - Articulation Body, Mass: 1, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -528,8 +486,6 @@ Tail_01_X - Articulation Body, Mass: 1, Articulation Joint Type: Spherical
 	Target:
 	Target Velocity:
 	Drive Type:
-
-
 
 Tail_02_X - Articulation Body, Mass: 0.65, Articulation Joint Type: Spherical
  Y Drive
@@ -560,8 +516,6 @@ Tail_02_X - Articulation Body, Mass: 0.65, Articulation Joint Type: Spherical
 	Target Velocity:
 	Drive Type:
 
-
-
 Tail_03_X(Tip) - Articulation Body, Mass: 0.5, Articulation Joint Type: Spherical
  Y Drive
 	Lower Limit:
@@ -591,36 +545,18 @@ Tail_03_X(Tip) - Articulation Body, Mass: 0.5, Articulation Joint Type: Spherica
 	Target Velocity:
 	Drive Type:
 
-
-
 Breast1_L(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
-
-
 
 Breast2_L(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
 
-
-
 Breast3_L(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
-
-
 
 Breast1_R(Base) - Articulation Body, Mass: 2, Articulation Joint Type: Fixed
 
-
-
 Breast2_R(Middle) - Articulation Body, Mass: 1.7, Articulation Joint Type: Fixed
-
-
 
 Breast3_R(Nipple(Tip)) - Articulation Body, Mass: 0.5, Articulation Joint Type: Fixed
 
-
-
 Butt_L - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
 
-
-
 Butt_R - Articulation Body, Mass: 8, Articulation Joint Type: Fixed
-
-
