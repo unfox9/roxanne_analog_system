@@ -1,62 +1,62 @@
 Hips - Articulation Body, Mass: 25, Root
 
 Spine(Waist Bottom) - Articulation Body, Mass: 5, Articulation Joint Type: Spherical
- Y Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- Z Drive
-	Lower Limit:
-	upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- X Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
+ 	Y Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	Z Drive
+		Lower Limit:
+		upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	X Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
 
 Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spherical
- Y Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- Z Drive
-	Lower Limit:
-	upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- X Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
+ 	Y Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	Z Drive
+		Lower Limit:
+		upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	X Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
 
 Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Spherical
  Y Drive
