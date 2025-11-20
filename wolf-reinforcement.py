@@ -19,7 +19,7 @@ class PolicyNet(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-env = UnityEnvironment(file_name="WolfEnv/WolfEnv.exe")
+env = UnityEnvironment(file_name=None)
 env.reset()
 behavior_name = list(env.behavior_specs.keys())[0]
 spec = env.behavior_specs[behavior_name]
