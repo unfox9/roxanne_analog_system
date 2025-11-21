@@ -1,6 +1,7 @@
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.base_env import ActionTuple
 import numpy as np
+import torch
 
 env = UnityEnvironment(file_name=None, timeout_wait=60)
 print("Created env, waiting for Unity...")
@@ -48,7 +49,7 @@ for episode in range(100):
     # 這裡我改成 while True，因為 done_py 可能跟 Unity 的 terminal 無關
     while True:
         step_idx += 1
-        n_agents = len(decision_steps)
+        n_agents = len(decision_steps) # 在 ML-Agents 裡，decision_steps 是一個「目前需要決策的 agent 集合」，len(decision_steps) = 需要 action 的 agent 數量。
         act_dim = spec.action_spec.continuous_size
 
         # 先暫時用隨機動作
