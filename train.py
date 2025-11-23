@@ -34,7 +34,7 @@ print("act_dim:", act_dim)
 print("Behavior:", behavior_name)
 
 # === Reward and obs ===
-def my_reward_and_done(prev_obs, obs):
+def my_reward(prev_obs, obs):
     
     last = obs[-10:] 
 
@@ -47,13 +47,8 @@ def my_reward_and_done(prev_obs, obs):
 
     reward = 0.0
     reward += upright * 0.01
-    if height < 0.5:
-        reward -= 1.0
-        done = True
-    else:
-        done = False
-
-    return reward, done
+    
+    return reward
 
 policy = PolicyNet(obs_dim, act_dim)
 
@@ -78,7 +73,7 @@ for episode in range(10):
         obs_current = obs_list[0]
 
         # reward
-        reward_py, done_py = my_reward_and_done(prev_obs, obs_current)
+        reward_py = my_reward(prev_obs, obs_current)
         episode_return += reward_py
 
         print(f"step {step_idx}, reward_py = {reward_py:.4f}")
@@ -90,11 +85,6 @@ for episode in range(10):
 
         action_tuple = ActionTuple(continuous=action_batch)
         env.set_actions(behavior_name, action_tuple)
-
-        if done_py:
-            print("Episode ended (by Python done)")
-            env.reset()
-            break
 
         prev_obs = obs_current
     
