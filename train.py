@@ -4,21 +4,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-class PolicyNet(nn.Module):
-    def __init__(self, obs_dim, act_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, act_dim),
-            nn.Tanh(),
-        )
-    
-    def forward(self, x):
-        return self.net(x)
-
 # === init unity ===
 env = UnityEnvironment(file_name=None, timeout_wait=60)
 print("Created env, waiting for Unity...")
@@ -50,11 +35,6 @@ def my_reward(prev_obs, obs):
     
     return reward
 
-# === policy ===
-policy = PolicyNet(obs_dim, act_dim)
-
-# === optimizer ===
-optimizer = torch.optim.Adam(policy.parameters(), lr=3e-4)
 
 # === episodes ===
 for episode in range(10):
