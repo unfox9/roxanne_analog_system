@@ -50,7 +50,11 @@ def my_reward(prev_obs, obs):
     
     return reward
 
+# === policy ===
 policy = PolicyNet(obs_dim, act_dim)
+
+# === optimizer ===
+optimizer = torch.optim.Adam(policy.parameters(), lr=3e-4)
 
 # === episodes ===
 for episode in range(10):
