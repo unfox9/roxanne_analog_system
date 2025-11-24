@@ -59,33 +59,33 @@ Chest(Waist Middle) - Articulation Body, Mass: 6, Articulation Joint Type: Spher
 		Drive Type:
 
 Upper Chest(Waist Top) - Articulation Body, Mass: 4, Articulation Joint Type: Spherical
- Y Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- Z Drive
-	Lower Limit:
-	upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
- X Drive
-	Lower Limit:
-	Upper Limit:
-	Stiffness:
-	Damping:
-	Force Limit:
-	Target:
-	Target Velocity:
-	Drive Type:
+ 	Y Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	Z Drive
+		Lower Limit:
+		upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
+ 	X Drive
+		Lower Limit:
+		Upper Limit:
+		Stiffness:
+		Damping:
+		Force Limit:
+		Target:
+		Target Velocity:
+		Drive Type:
 
 Neck - Articulation Body, Mass: 3, Articulation Joint Type: Spherical
  Y Drive
