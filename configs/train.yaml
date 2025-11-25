@@ -1,0 +1,37 @@
+defaults:
+    - _self_
+    - agent: sac
+
+env: unity_env
+
+executable_path: None
+
+# this needs to be specified manually
+experiment: test_exp
+
+decision_interval: 1
+render: true
+
+num_train_steps: 1000000 #1e6
+replay_buffer_capacity: ${num_train_steps}
+
+num_seed_steps: 5000
+
+eval_frequency: 10000
+num_eval_episodes: 10
+
+device: cuda
+
+# logger
+log_frequency: 10000
+log_save_tb: true
+
+
+
+seed: 1
+
+
+# hydra configuration
+hydra:
+    run:
+        dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${env}_${experiment}
