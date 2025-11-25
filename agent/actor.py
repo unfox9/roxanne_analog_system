@@ -83,7 +83,7 @@ class DiagGaussianActor(nn.Module):
         self.outputs['std'] = std
 
         dist = SquashedNormal(mu, std)
-        return dist
+        return dist # distribution（分佈）
 
     def log(self, logger, step):
         for k, v in self.outputs.items():

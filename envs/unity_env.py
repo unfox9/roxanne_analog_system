@@ -1,4 +1,5 @@
 from mlagents_envs.environment import UnityEnvironment
+from mlagents_envs.base_env import ActionTuple
 from base_env import BaseEnv
 
 class UnityEnv(BaseEnv):
