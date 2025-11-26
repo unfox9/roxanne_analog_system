@@ -4,11 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from agent import Agent
+from agent.agent import Agent
 import utils
 
-from actor import DiagGaussianActor
-from critic import DoubleQCritic
+from agent.actor import DiagGaussianActor
+from agent.critic import DoubleQCritic
 
 
 class SACAgent(Agent):
@@ -34,9 +34,12 @@ class SACAgent(Agent):
         critic_target_update_frequency,
         batch_size,
         learnable_temperature,
+        name = "sac",
+        **kwargs
     ):
         super().__init__()
 
+        self.name = name
         self.action_range = action_range
         self.device = torch.device(device)
         self.discount = discount

@@ -5,7 +5,7 @@ from envs.base_env import BaseEnv, Box
 
 
 class UnityEnv(BaseEnv):
-    def __init__(self, executable_path, decision_interval=1, render=True, max_episode_steps=1000):
+    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=5000):
         self.env = UnityEnvironment(file_name=None, no_graphics=not render)
         self.env.reset()
 
@@ -46,31 +46,22 @@ class UnityEnv(BaseEnv):
         obs = self._get_obs_from_steps(decision_steps)
         return obs
 
-    def _compute_reward(self, obs, next_obs, action, unity_reward, done):
-        # 根據 CollectObservations 的順序解碼
-        height = next_obs[0]           # hips 高度
-        vel = next_obs[1:4]            # hips 局部速度 (x,y,z)
-        up = next_obs[4:7]             # hips.up
-        # fwd = next_obs[7:10]         # 站立不需要前進，就先不用
+    def _compute_reward(self, next_obs, action, unity_reward, done):
+        height = next_obs[0]
+        vel = next_obs[1:4]
+        up = next_obs[4:7]
 
-        # up 是一個向量，理想是 (0,1,0)，所以 up[1] 越接近 1 越直
-        upright = up[1]
+        # scale up
+        height_term = 5.0 * (height - 0.5)   # 最高大約 +3
+        upright_term = 5.0 * up[1]           # 0~5
+        vel_penalty = -1.0 * np.linalg.norm(vel)
 
-        # 盡量站著不亂晃：速度越大越扣分
-        vel_penalty = -0.1 * float(np.linalg.norm(vel))
+        reward = height_term + upright_term + vel_penalty
 
-        # 動作過大也扣一點
-        action_penalty = -0.001 * float(np.sum(np.square(action)))
+        # 加一點 Unity 的 reward
+        reward += unity_reward * 0.5
 
-        # 高度獎勵：越高越好（你之後可以 clamp 或縮放）
-        height_reward = height
-
-        # 總 reward：站高 + 站直 + 不亂晃 + 動作小
-        reward = height_reward + 0.5 * upright + vel_penalty + action_penalty
-
-        # 目前完全忽略 unity_reward
         return reward
-
 
     def step(self, action):
         action = np.array(action, dtype=np.float32).reshape(1, -1)
@@ -90,9 +81,7 @@ class UnityEnv(BaseEnv):
         next_obs = self._get_obs_from_steps(step)
         unity_reward = float(step.reward[0])
 
-        reward = self._compute_reward(self._last_obs, next_obs, action, unity_reward, done)
-
-        self._last_obs = next_obs
+        reward = self._compute_reward(next_obs, action, unity_reward, done)
 
         return next_obs, reward, done, {}
 
