@@ -8,7 +8,7 @@ log_frequency: 10000
 # Environment
 env: "unity_env"
 executable_path: None
-decision_interval: 1
+decision_interval: 5
 render: true
 
 # Replay buffer & training schedule

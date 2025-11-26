@@ -169,7 +169,7 @@ def parse_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="train.yaml",
+        default="configs/train.yaml",
         help="Path to YAML config file."
     )
 
