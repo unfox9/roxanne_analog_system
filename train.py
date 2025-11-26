@@ -13,27 +13,31 @@ from logger import Logger
 from replay_buffer import ReplayBuffer
 import utils
 
-import hydra
+from ruamel.yaml import YAML
+import pathlib
+
+
+def load_yaml(path):
+    yaml = YAML()
+    text = pathlib.Path(path).read_text()
+    return yaml.load(text)
 
 
 def make_env(cfg):
-    suite = cfg.env  # 比如 "unity_env"
+    suite = cfg["env"]  # "unity_env"
 
     if suite == "unity_env":
-        # 匯入你寫好的 UnityEnv
         from envs.unity_env import UnityEnv
 
-        # 這裡假設 cfg 裡面有這幾個欄位
-        executable_path   = getattr(cfg, "executable_path", "path/to/your_build.exe")
-        decision_interval = getattr(cfg, "decision_interval", 1)
-        render            = getattr(cfg, "render", True)
+        executable_path   = cfg.get("executable_path",   "path/to/build.exe")
+        decision_interval = cfg.get("decision_interval", 1)
+        render            = cfg.get("render", True)
 
         env = UnityEnv(
             executable_path=executable_path,
             decision_interval=decision_interval,
             render=render,
         )
-
     else:
         raise ValueError(f"unknown env: {suite}")
 
@@ -46,69 +50,83 @@ class Workspace(object):
         print(f'workspace: {self.work_dir}')
 
         self.cfg = cfg
+        self.device = torch.device(cfg["device"])
 
-        self.logger = Logger(self.work_dir,
-                             save_tb=cfg.log_save_tb,
-                             log_frequency=cfg.log_frequency,
-                             agent="sac")
+        agent_name = cfg["agent"].get("name", "agent")
 
-        utils.set_seed_everywhere(cfg.seed)
-        self.device = torch.device(cfg.device)
+        self.logger = Logger(
+            self.work_dir,
+            save_tb=cfg["log_save_tb"],
+            log_frequency=cfg["log_frequency"],
+            agent= agent_name
+        )
+
+        utils.set_seed_everywhere(cfg["seed"])
         self.env = make_env(cfg)
 
-        cfg.agent.obs_dim = self.env.observation_space.shape[0]
-        cfg.agent.action_dim = self.env.action_space.shape[0]
-        cfg.agent.action_range = [
+        # compute dynamic dims
+        obs_dim = self.env.observation_space.shape[0]
+        action_dim = self.env.action_space.shape[0]
+
+        # 塞入 agent config
+        cfg["agent"]["obs_dim"] = obs_dim
+        cfg["agent"]["action_dim"] = action_dim
+        cfg["agent"]["action_range"] = [
             float(self.env.action_space.low.min()),
             float(self.env.action_space.high.max()),
         ]
-        self.agent = hydra.utils.instantiate(cfg.agent)
+        # 統一用頂層 device
+        cfg["agent"]["device"] = cfg["device"]
 
-        self.replay_buffer = ReplayBuffer(self.env.observation_space.shape,
-                                          self.env.action_space.shape,
-                                          int(cfg.replay_buffer_capacity),
-                                          self.device)
+        # instantiate agent manually
+        from agent.sac import SACAgent
+        self.agent = SACAgent(**cfg["agent"])
+
+        self.replay_buffer = ReplayBuffer(
+            self.env.observation_space.shape,
+            self.env.action_space.shape,
+            int(cfg["replay_buffer_capacity"]),
+            self.device
+        )
 
         self.step = 0
 
     def evaluate(self):
-        average_episode_reward = 0
-        for episode in range(self.cfg.num_eval_episodes):
+        avg_reward = 0
+        for episode in range(self.cfg["num_eval_episodes"]):
             obs = self.env.reset()
             self.agent.reset()
             done = False
-            episode_reward = 0
+            ep_reward = 0
+
             while not done:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=False)
                 obs, reward, done, _ = self.env.step(action)
-                episode_reward += reward
+                ep_reward += reward
 
-            average_episode_reward += episode_reward
-        average_episode_reward /= self.cfg.num_eval_episodes
-        self.logger.log('eval/episode_reward', average_episode_reward,
-                        self.step)
+            avg_reward += ep_reward
+
+        avg_reward /= self.cfg["num_eval_episodes"]
+        self.logger.log('eval/episode_reward', avg_reward, self.step)
         self.logger.dump(self.step)
 
     def run(self):
         episode, episode_reward, done = 0, 0, True
-        start_time = time.time()
-        while self.step < self.cfg.num_train_steps:
+        start = time.time()
+
+        while self.step < self.cfg["num_train_steps"]:
             if done:
                 if self.step > 0:
-                    self.logger.log('train/duration',
-                                    time.time() - start_time, self.step)
-                    start_time = time.time()
-                    self.logger.dump(
-                        self.step, save=(self.step > self.cfg.num_seed_steps))
+                    self.logger.log('train/duration', time.time() - start, self.step)
+                    start = time.time()
+                    self.logger.dump(self.step, save=(self.step > self.cfg["num_seed_steps"]))
 
-                # evaluate agent periodically
-                if self.step > 0 and self.step % self.cfg.eval_frequency == 0:
+                if self.step > 0 and self.step % self.cfg["eval_frequency"] == 0:
                     self.logger.log('eval/episode', episode, self.step)
                     self.evaluate()
 
-                self.logger.log('train/episode_reward', episode_reward,
-                                self.step)
+                self.logger.log('train/episode_reward', episode_reward, self.step)
 
                 obs = self.env.reset()
                 self.agent.reset()
@@ -119,34 +137,34 @@ class Workspace(object):
 
                 self.logger.log('train/episode', episode, self.step)
 
-            # sample action for data collection
-            if self.step < self.cfg.num_seed_steps:
+            # collect action
+            if self.step < self.cfg["num_seed_steps"]:
                 action = self.env.action_space.sample()
             else:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=True)
 
-            # run training update
-            if self.step >= self.cfg.num_seed_steps:
+            # train
+            if self.step >= self.cfg["num_seed_steps"]:
                 self.agent.update(self.replay_buffer, self.logger, self.step)
 
             next_obs, reward, done, _ = self.env.step(action)
 
-            # allow infinite bootstrap
-            done = float(done)
-            done_no_max = 0 if episode_step + 1 == self.env._max_episode_steps else done
+            done_f = float(done)
+            done_no_max = 0 if episode_step + 1 == self.env._max_episode_steps else done_f
+
             episode_reward += reward
 
-            self.replay_buffer.add(obs, action, reward, next_obs, done,
-                                   done_no_max)
+            self.replay_buffer.add(obs, action, reward, next_obs, done_f, done_no_max)
 
             obs = next_obs
             episode_step += 1
             self.step += 1
 
 
-@hydra.main(version_base=None, config_path='configs', config_name='train')
-def main(cfg):
+def main():
+    cfg = load_yaml("train.yaml")  # 建議就用專案根目錄的 train.yaml
+
     workspace = Workspace(cfg)
     workspace.run()
 
