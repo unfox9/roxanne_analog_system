@@ -7,7 +7,7 @@ log_frequency: 10000
 
 # Environment
 env: "unity_env"
-executable_path: "path/to/your_build.exe"
+executable_path: None
 decision_interval: 1
 render: true
 
