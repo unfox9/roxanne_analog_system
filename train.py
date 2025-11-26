@@ -15,6 +15,7 @@ import utils
 
 from ruamel.yaml import YAML
 import pathlib
+import argparse
 
 
 def load_yaml(path):
@@ -161,13 +162,52 @@ class Workspace(object):
             episode_step += 1
             self.step += 1
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # 指定要用哪個 config 檔
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="train.yaml",
+        help="Path to YAML config file."
+    )
+
+    # 指定模式：train 或 eval
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="train",
+        choices=["train", "eval"],
+        help="Run mode: train or eval only."
+    )
+
+    # 可選：覆寫 seed
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override seed in config (optional)."
+    )
+
+    return parser.parse_args()
 
 def main():
-    cfg = load_yaml("train.yaml")  # 建議就用專案根目錄的 train.yaml
+    args = parse_args()
+    cfg = load_yaml(args.config)  # 建議就用專案根目錄的 train.yaml
+
+    # 2) 可選：覆寫 seed
+    if args.seed is not None:
+        cfg["seed"] = args.seed
 
     workspace = Workspace(cfg)
-    workspace.run()
-
+    if args.mode == "train":
+        workspace.run()
+    elif args.mode == "eval":
+        # 簡單版：只做幾次 evaluate，不訓練
+        workspace.evaluate()
+    else:
+        raise ValueError(f"Unknown mode: {args.mode}")
 
 if __name__ == '__main__':
     main()
