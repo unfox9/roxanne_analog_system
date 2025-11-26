@@ -5,8 +5,10 @@ from envs.base_env import BaseEnv, Box
 
 
 class UnityEnv(BaseEnv):
-    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=5000):
-        self.env = UnityEnvironment(file_name=None, no_graphics=not render)
+    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=100):
+        # If an executable path is provided, use it; otherwise connect to the Editor (None)
+        file_name = executable_path if executable_path not in (None, "") else None
+        self.env = UnityEnvironment(file_name=file_name, no_graphics=not render)
         self.env.reset()
 
         self.behavior_name = list(self.env.behavior_specs.keys())[0]
@@ -42,6 +44,7 @@ class UnityEnv(BaseEnv):
 
     def reset(self):
         self.env.reset()
+        self._episode_step = 0
         decision_steps, terminal_steps = self.env.get_steps(self.behavior_name)
         obs = self._get_obs_from_steps(decision_steps)
         return obs
@@ -77,6 +80,11 @@ class UnityEnv(BaseEnv):
         else:
             step = decision_steps
             done = False
+
+        self._episode_step += 1
+        if self._episode_step >= self._max_episode_steps:
+            done = True
+
 
         next_obs = self._get_obs_from_steps(step)
         unity_reward = float(step.reward[0])
