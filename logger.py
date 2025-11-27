@@ -67,20 +67,12 @@ class MetersGroup(object):
     def _prime_meters(self):
         data = dict()
         for key, meter in self._meters.items():
-            k = key
-            # normalize prefixes like 'train/...', 'train_...', 'eval/...' or 'eval_...'
-            if k.startswith('train'):
-                k = k[len('train'):]
-            elif k.startswith('eval'):
-                k = k[len('eval'):]
-
-            # remove a delimiter if present
-            if len(k) > 0 and (k[0] == '/' or k[0] == '_'):
-                k = k[1:]
-
-            # replace any remaining separators with underscore to form csv keys
-            k = k.replace('/', '_')
-            data[k] = meter.value()
+            if key.startswith('train'):
+                key = key[len('train') + 1:]
+            else:
+                key = key[len('eval') + 1:]
+            key = key.replace('/', '_')
+            data[key] = meter.value()
         return data
 
     def _dump_to_csv(self, data):
