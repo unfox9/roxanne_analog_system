@@ -21,6 +21,9 @@ public class WolfAgent : Agent
         public float minZTarget, maxZTarget;
     }
 
+    [Header("Feet / Toes contacts")]
+    public FootContact[] toeContacts;
+
     [Header("Body refs")]
     public ArticulationBody root;   // 角色最上層的 ArticulationBody
     public ArticulationBody hips;   // 主要質量中心 / 骨盆
@@ -53,6 +56,32 @@ public class WolfAgent : Agent
         }
     }
 
+    Vector3 ComputeCOM()
+    {
+        CacheBodies();
+        if (_bodies == null || _bodies.Length == 0)
+        {
+            if (hips != null) return hips.worldCenterOfMass;
+            if (root != null) return root.transform.position;
+            return Vector3.zero;
+        }
+
+        float totalMass = 0f;
+        Vector3 com = Vector3.zero;
+        foreach (var b in _bodies)
+        {
+            totalMass += b.mass;
+            com += b.worldCenterOfMass * b.mass;
+        }
+        if (totalMass <= 0f)
+        {
+            if (hips != null) return hips.worldCenterOfMass;
+            if (root != null) return root.transform.position;
+            return Vector3.zero;
+        }
+        return com / totalMass;
+    }
+
     void CacheBodies()
     {
         if (root != null && (_bodies == null || _bodies.Length == 0))
@@ -64,19 +93,9 @@ public class WolfAgent : Agent
     void OnDrawGizmos()
     {
         if (root == null) return;
-        CacheBodies();
-        if (_bodies == null || _bodies.Length == 0) return;
 
-        float totalMass = 0f;
-        Vector3 com = Vector3.zero;
-        foreach (var b in _bodies)
-        {
-            totalMass += b.mass;
-            com += b.worldCenterOfMass * b.mass;
-        }
-        if (totalMass <= 0f) return;
-
-        com /= totalMass;
+        // 直接用共用函式
+        Vector3 com = ComputeCOM();
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawSphere(com, 0.05f);
@@ -107,21 +126,16 @@ public class WolfAgent : Agent
         }
     }
 
-    public override void OnEpisodeBegin()
+    void ResetToStandPose()
     {
-        // Reset 位置 & 姿勢
         if (hips != null)
         {
-            hips.transform.position = _startPos + new Vector3(
-                Random.Range(-0.05f, 0.05f), 
-                0.0f,
-                Random.Range(-0.05f, 0.05f));
+            hips.transform.position = _startPos;
             hips.transform.rotation = _startRot;
             hips.velocity = Vector3.zero;
             hips.angularVelocity = Vector3.zero;
         }
 
-        // 重設 joints
         foreach (var jc in joints)
         {
             var b = jc.body;
@@ -130,32 +144,27 @@ public class WolfAgent : Agent
             b.velocity = Vector3.zero;
             b.angularVelocity = Vector3.zero;
 
-            // x 軸
-            if (jc.useXDrive)
-            {
-                var drive = b.xDrive;
-                drive.target = 0f;
-                b.xDrive = drive;
-            }
-            // y 軸
-            if (jc.useYDrive)
-            {
-                var drive = b.yDrive;
-                drive.target = 0f;
-                b.yDrive = drive;
-            }
-            // z 軸
-            if (jc.useZDrive)
-            {
-                var drive = b.zDrive;
-                drive.target = 0f;
-                b.zDrive = drive;
-            }
-        }
+            // 關節的 target 回到「站姿」
+            var xd = b.xDrive;
+            xd.target = 0f;
+            b.xDrive = xd;
 
-        // 歸零 step
+            var yd = b.yDrive;
+            yd.target = 0f;
+            b.yDrive = yd;
+
+            var zd = b.zDrive;
+            zd.target = 0f;
+            b.zDrive = zd;
+        }
+    }
+
+    public override void OnEpisodeBegin()
+    {
+        ResetToStandPose();
         stepCount = 0;
     }
+
 
     public override void CollectObservations(VectorSensor sensor)
     {
@@ -169,22 +178,77 @@ public class WolfAgent : Agent
             return;
         }
 
-        // 0: hips height (世界座標 y)
-        sensor.AddObservation(hips.transform.position.y);
+    // ========= 1. root 資訊 (10) =============
 
-        // 1~3: hips 的「局部速度」
-        Vector3 velLocal = hips.transform.InverseTransformDirection(hips.velocity);
-        sensor.AddObservation(velLocal);  // vx, vy, vz
+    // height
+    sensor.AddObservation(hips.transform.position.y);
 
-        // 4~6: hips.transform.up
-        Vector3 up = hips.transform.up.normalized;
-        sensor.AddObservation(up);        // ux, uy, uz
+    // local velocity
+    Vector3 velLocal = hips.transform.InverseTransformDirection(hips.velocity);
+    sensor.AddObservation(velLocal);
 
-        // 7~9: hips.transform.forward
-        Vector3 fwd = hips.transform.forward.normalized;
-        sensor.AddObservation(fwd);       // fx, fy, fz
+    // up / forward
+    Vector3 up = hips.transform.up.normalized;
+    Vector3 fwd = hips.transform.forward.normalized;
 
-        // 目前總共 10 個 float
+    sensor.AddObservation(up);
+    sensor.AddObservation(fwd);
+
+    // COM：用 hips 當 local 參考
+    Vector3 comWorld = ComputeCOM();
+    Vector3 comLocal = hips.transform.InverseTransformPoint(comWorld);
+
+    sensor.AddObservation(comLocal);   // 這裡多 3 維
+
+    // ========= 2. joints 資訊 (7 * joints.Count) ===========
+        foreach (var jc in joints)
+        {
+            var b = jc.body;
+            if (b == null)
+            {
+                // 補零保持維度固定
+                sensor.AddObservation(new float[7]);
+                continue;
+            }
+
+        Transform t = b.transform;
+
+        // local rotation (相對 parent)
+        Quaternion q = t.localRotation.normalized;
+        sensor.AddObservation(q.x);
+        sensor.AddObservation(q.y);
+        sensor.AddObservation(q.z);
+        sensor.AddObservation(q.w);
+
+        // local angular velocity
+        Vector3 angVelLocal = t.InverseTransformDirection(b.angularVelocity);
+        sensor.AddObservation(angVelLocal);
+        }
+
+        // ========= 3. 腳趾接地 (toe contacts) ===========
+        if (toeContacts != null)
+        {
+            foreach (var toe in toeContacts)
+            {
+                float grounded = (toe != null && toe.IsGrounded) ? 1f : 0f;
+                sensor.AddObservation(grounded);
+            }
+        }
+    }
+
+
+    bool IsFallen()
+    {
+        if (hips == null) return false;
+
+        float height = hips.transform.position.y;
+        Vector3 up = hips.transform.up;
+        float upDot = Vector3.Dot(up, Vector3.up);
+
+        if (height < fallHeightThreshold) return true;
+        if (upDot < minUprightDot) return true;
+
+        return false;
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -192,47 +256,11 @@ public class WolfAgent : Agent
         var a = actions.ContinuousActions;
         ApplyJointActions(a);
 
-        if (hips == null)
-            return;
-
-        // --------- 計算狀態量 (這裡重新算，不吃 CollectObservations 的變數) ---------
-        float height = hips.transform.position.y;
-        Vector3 up = hips.transform.up.normalized;
-        Vector3 velLocal = hips.transform.InverseTransformDirection(hips.velocity);
-
-        // --------- Safety：跌倒就結束 ---------
-        if (height < fallHeightThreshold || up.y < minUprightDot)
+        if (IsFallen())
         {
-            // 跌倒可以給一個小 penalty（避免亂姿勢）
-            AddReward(-1.0f);
-            EndEpisode();
+            EndEpisode();          // 建議：直接結束，下一回合再站好
             return;
         }
-
-        // --------- Reward 設計：目標 = 站好 ---------
-        float reward = 0f;
-
-        // (1) 高度越接近合理站立高度區間越好
-        float heightNorm = Mathf.InverseLerp(minStandingHeight, maxStandingHeight, Mathf.Clamp(height, minStandingHeight, maxStandingHeight));
-        // 在區間內：0~1 之間；低於 minStandingHeight 就 0；高於 maxStandingHeight 也當 1
-        reward += 0.4f * heightNorm;
-
-        // (2) 身體越直立 (up.y 越接近 1) 越好
-        // up.y 本身就大概是 -1 ~ 1，站好大約 0.7~1
-        float uprightReward = Mathf.InverseLerp(0.0f, 1.0f, Mathf.Clamp01(up.y));
-        reward += 0.5f * uprightReward;
-
-        // (3) 不亂晃：水平速度越小越好
-        Vector2 horizVel = new Vector2(velLocal.x, velLocal.z);
-        float horizSpeed = horizVel.magnitude;
-        // 小扣分：速度越大越扣
-        reward -= 0.05f * horizSpeed;
-
-        // (4) 活著就有一點活躍獎勵，鼓勵長時間維持站姿
-        reward += 0.001f;
-
-        // 用 fixedDeltaTime 做時間尺度無關的 reward
-        AddReward(reward * Time.fixedDeltaTime);
     }
 
     void ApplyJointActions(ActionSegment<float> a)

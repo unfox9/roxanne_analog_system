@@ -20,7 +20,7 @@ import argparse
 
 def load_yaml(path):
     yaml = YAML()
-    text = pathlib.Path(path).read_text()
+    text = pathlib.Path(path).read_text("UTF-8")
     return yaml.load(text)
 
 
@@ -197,7 +197,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    cfg = load_yaml(args.config)  # 建議就用專案根目錄的 train.yaml
+    cfg = load_yaml(args.config)  
 
     # 2) 可選：覆寫 seed
     if args.seed is not None:

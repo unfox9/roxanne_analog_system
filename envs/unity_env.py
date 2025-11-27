@@ -5,9 +5,8 @@ from envs.base_env import BaseEnv, Box
 
 
 class UnityEnv(BaseEnv):
-    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=100):
-        # If an executable path is provided, use it; otherwise connect to the Editor (None)
-        file_name = executable_path if executable_path not in (None, "") else None
+    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=5000):
+        file_name = executable_path
         self.env = UnityEnvironment(file_name=file_name, no_graphics=not render)
         self.env.reset()
 
@@ -37,7 +36,6 @@ class UnityEnv(BaseEnv):
     def _get_obs_from_steps(self, decision_steps):
         obs_list = []
         for arr in decision_steps.obs:
-            # arr: (n_agents, ...) -> 取第 0 個 agent，然後展平成向量
             obs_list.append(arr[0].ravel())
         obs = np.concatenate(obs_list, axis=0)
         return obs.astype(np.float32)
