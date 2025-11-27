@@ -118,6 +118,14 @@ public class WolfAgent : Agent
 
     void FixedUpdate()
     {
+        
+        if (hips != null)
+        {
+            float hipY = hips.transform.position.y;
+            float comY = ComputeCOM().y;
+            //Debug.Log($"hip worldY = {hipY:F3}, COM worldY = {comY:F3}");
+        }
+
         // 自己控制何時要 decision，不用 DecisionRequester
         stepCount++;
         if (stepCount % decisionInterval == 0)
@@ -130,21 +138,19 @@ public class WolfAgent : Agent
     {
         if (hips != null)
         {
-            hips.transform.position = _startPos;
-            hips.transform.rotation = _startRot;
             hips.velocity = Vector3.zero;
             hips.angularVelocity = Vector3.zero;
+            hips.transform.position = _startPos;
+            hips.transform.rotation = _startRot;
         }
 
         foreach (var jc in joints)
         {
             var b = jc.body;
             if (b == null) continue;
-
             b.velocity = Vector3.zero;
             b.angularVelocity = Vector3.zero;
 
-            // 關節的 target 回到「站姿」
             var xd = b.xDrive;
             xd.target = 0f;
             b.xDrive = xd;
@@ -158,6 +164,7 @@ public class WolfAgent : Agent
             b.zDrive = zd;
         }
     }
+
 
     public override void OnEpisodeBegin()
     {
@@ -236,17 +243,17 @@ public class WolfAgent : Agent
         }
     }
 
-
     bool IsFallen()
     {
         if (hips == null) return false;
 
-        float height = hips.transform.position.y;
-        Vector3 up = hips.transform.up;
-        float upDot = Vector3.Dot(up, Vector3.up);
+        // world-space COM
+        Vector3 com = ComputeCOM();
+        float height = com.y;
 
-        if (height < fallHeightThreshold) return true;
-        if (upDot < minUprightDot) return true;
+        // 低於某高度就算跌倒
+        if (height < fallHeightThreshold)
+            return true;
 
         return false;
     }
@@ -258,6 +265,7 @@ public class WolfAgent : Agent
 
         if (IsFallen())
         {
+            Debug.Log("[WolfAgent] Fallen -> EndEpisode()");
             EndEpisode();          // 建議：直接結束，下一回合再站好
             return;
         }
