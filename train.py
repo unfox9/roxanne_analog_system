@@ -162,8 +162,8 @@ class Workspace(object):
             episode_step += 1
             self.step += 1
             # periodic console status so user can see training progress
-            if self.step % 100 == 0:
-                print(f"[train] step={self.step} episode={episode} episode_step={episode_step} episode_reward={episode_reward:.3f}")
+            #if self.step % 100 == 0:
+               #print(f"[train] step={self.step} episode={episode} episode_step={episode_step} episode_reward={episode_reward:.3f}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
