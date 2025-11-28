@@ -1,6 +1,6 @@
 # ---- 全域設定 ----
-seed: 1
-device: "cuda"
+seed: 0
+device: "cuda:1"
 
 log_save_tb: false
 log_frequency: 10000
@@ -8,13 +8,13 @@ log_frequency: 10000
 # Environment
 env: "unity_env"
 executable_path: 
-decision_interval: 5
+decision_interval: 1
 render: true
 
 # Replay buffer & training schedule
 replay_buffer_capacity: 1000000
 num_train_steps: 1000000
-num_seed_steps: 5000
+num_seed_steps: 1000
 eval_frequency: 10000
 num_eval_episodes: 10
 
@@ -37,7 +37,7 @@ agent:
   critic_tau: 0.005
   critic_target_update_frequency: 2
 
-  batch_size: 1024
+  batch_size: 2048
   learnable_temperature: true
 
   critic_cfg:

@@ -2,6 +2,8 @@ using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Actuators;
+using System.Collections.Generic;
+using Unity.VisualScripting;
 
 public class WolfAgent : Agent
 {
@@ -39,12 +41,13 @@ public class WolfAgent : Agent
     public float maxStandingHeight = 1.2f;   // 太高就不再額外加分
     public float fallHeightThreshold = 0.3f; // 低於這個就算跌倒
     public float minUprightDot = 0.3f;       // up.y 低於這個也算跌倒
+    public float fallPenalty = 1.0f;          // 跌倒懲罰
     [Header("Reward Parameters")]
     public float rewardMinUpright = 0.01f;   // 對應 python 獎勵的 min_upright
     public float rewardComK = 5f;            // 對應 python 獎勵的 com_k
     public float rewardUprightWeight = 0.4f;
     public float rewardGroundWeight = 0.4f;
-    public float rewardComWeight = 0.0f;     // 預設與 python 一樣關閉 COM 獎勵
+    public float rewardComWeight = 0.4f;     // 預設與 python 一樣關閉 COM 獎勵
 
     // 起始位置 (reset 用)
     Vector3 _startPos;
@@ -53,13 +56,17 @@ public class WolfAgent : Agent
     // 用來畫 COM 的 cache
     ArticulationBody[] _bodies;
 
-    void Awake()
+
+
+    void Start()
     {
+        // 1. 記錄 Hips 的初始狀態
         if (hips != null)
         {
             _startPos = hips.transform.position;
             _startRot = hips.transform.rotation;
         }
+
     }
 
     Vector3 ComputeCOM()
@@ -107,7 +114,7 @@ public class WolfAgent : Agent
         Gizmos.DrawSphere(com, 0.05f);
     }
 
-    void Start()
+    void Awake()
     {
         // 幫你檢查「需要幾個連續動作」
         int expected = 0;
@@ -129,7 +136,7 @@ public class WolfAgent : Agent
         {
             float hipY = hips.transform.position.y;
             float comY = ComputeCOM().y;
-            //Debug.Log($"hip worldY = {hipY:F3}, COM worldY = {comY:F3}");
+            Debug.Log($"hip worldY = {hipY:F3}, COM worldY = {comY:F3}");
         }
 
         // 自己控制何時要 decision，不用 DecisionRequester
@@ -140,41 +147,71 @@ public class WolfAgent : Agent
         }
     }
 
-    /*void ResetToStandPose()
+    void ResetToStandPose()
     {
-        if (hips != null)
+        // 1. 強制重製根節點 (Root)
+        // ArticulationBody 必須使用 TeleportRoot，直接改 transform 無效
+        ArticulationBody anchor = root != null ? root : hips;
+        if (anchor != null)
         {
-            hips.velocity = Vector3.zero;
-            hips.angularVelocity = Vector3.zero;
-            hips.transform.position = _startPos;
-            hips.transform.rotation = _startRot;
+            // 這行是瞬移的關鍵
+            anchor.TeleportRoot(_startPos, _startRot);
+            
+            // 歸零速度
+            anchor.velocity = Vector3.zero;
+            anchor.angularVelocity = Vector3.zero;
+            anchor.jointVelocity = new ArticulationReducedSpace(0f, 0f, 0f);
         }
 
+        // 2. 強制重製所有關節 (Joints)
         foreach (var jc in joints)
         {
             var b = jc.body;
             if (b == null) continue;
+
+            // --- 關鍵修正 ---
+            // ArticulationBody 不能改 transform.localRotation。
+            // 必須設定 jointPosition (這是物理層面的角度，DOF)
+            // 設為 0 代表回到剛開始擺放的初始角度 (T-Pose / Stand Pose)
+            b.jointPosition = new ArticulationReducedSpace(0f, 0f, 0f);
+            b.jointVelocity = new ArticulationReducedSpace(0f, 0f, 0f);
+
+            // 確保剛體速度歸零
             b.velocity = Vector3.zero;
             b.angularVelocity = Vector3.zero;
 
-            var xd = b.xDrive;
-            xd.target = 0f;
-            b.xDrive = xd;
+            // --- 重設 Drive Target (你原本的邏輯) ---
+            // 確保 Drive 目標也歸零，不然瞬移後會馬上用力
+            if (jc.useXDrive)
+            {
+                var xd = b.xDrive;
+                xd.target = 0f;
+                b.xDrive = xd;
+            }
 
-            var yd = b.yDrive;
-            yd.target = 0f;
-            b.yDrive = yd;
+            if (jc.useYDrive)
+            {
+                var yd = b.yDrive;
+                yd.target = 0f;
+                b.yDrive = yd;
+            }
 
-            var zd = b.zDrive;
-            zd.target = 0f;
-            b.zDrive = zd;
+            if (jc.useZDrive)
+            {
+                var zd = b.zDrive;
+                zd.target = 0f;
+                b.zDrive = zd;
+            }
         }
-    }:*/
+        
+        // 強制物理引擎刷新一次 Transform，確保視覺與物理同步
+        Physics.SyncTransforms();
+    }
 
 
     public override void OnEpisodeBegin()
     {
-        //ResetToStandPose();
+        ResetToStandPose();
         stepCount = 0;
     }
 
@@ -275,7 +312,7 @@ public class WolfAgent : Agent
         Vector3 up = hips.transform.up.normalized;
 
         float upY = up.y;
-        float comXY = new Vector2(comLocal.x, comLocal.y).magnitude;
+        float comXY = new Vector2(comLocal.x, comLocal.z).magnitude;
         float groundedFrac = ComputeGroundedFraction();
 
         float rUpright = Mathf.Clamp01((upY - rewardMinUpright) / (1f - rewardMinUpright));
@@ -285,6 +322,7 @@ public class WolfAgent : Agent
         float reward = rewardUprightWeight * rUpright
                      + rewardComWeight * rCom
                      + rewardGroundWeight * rGround;
+
 
         return reward;
     }
@@ -314,7 +352,9 @@ public class WolfAgent : Agent
 
         if (IsFallen())
         {
+            AddReward(-fallPenalty); // 跌倒懲罰
             EndEpisode();          // 建議：直接結束，下一回合再站好
+            return;
         }
     }
 
