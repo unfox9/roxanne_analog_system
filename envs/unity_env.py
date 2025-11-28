@@ -34,13 +34,6 @@ class UnityEnv(BaseEnv):
             dtype=np.float32,
         )
 
-        # 獎勵參數
-        self.num_toes = num_toes
-        self.min_upright = min_upright
-        self.com_k = com_k
-
-
-
     def _get_obs_from_steps(self, decision_steps):
         obs_list = []
         for arr in decision_steps.obs:
@@ -48,39 +41,19 @@ class UnityEnv(BaseEnv):
         obs = np.concatenate(obs_list, axis=0)
         return obs.astype(np.float32)
 
+    def _get_reward_from_steps(self, decision_steps, terminal_steps):
+        if len(terminal_steps) > 0:
+            return float(terminal_steps.reward[0])
+        if len(decision_steps) > 0:
+            return float(decision_steps.reward[0])
+        return 0.0
+
     def reset(self):
         self.env.reset()
         self._episode_step = 0
         decision_steps, terminal_steps = self.env.get_steps(self.behavior_name)
         obs = self._get_obs_from_steps(decision_steps)
         return obs
-
-    def _compute_reward(self, next_obs, action, done):
-        height = next_obs[0]
-        vel = next_obs[1:4]
-        up = next_obs[4:7]
-        fwd = next_obs[7:10]
-        com_local = next_obs[10:13] # center of mass in local frame
-
-        up_y = up[1]
-
-        com_xy = np.linalg.norm(next_obs[10:12])
-
-        n_tose = self.num_toes
-        tose = next_obs[-n_tose:]
-        grounded_frac = np.mean(tose)
-
-        r_upright = np.clip((up_y - self.min_upright) / (1.0 - self.min_upright), 0.0, 1.0)
-        r_com = np.exp(-self.com_k * com_xy * com_xy)
-        r_ground = grounded_frac
-
-        reward = (
-            0.4 * r_upright +
-            #0.4 * r_com +
-            0.4 * r_ground
-        )
-
-        return reward
 
     def step(self, action):
         action = np.array(action, dtype=np.float32).reshape(1, -1)
@@ -99,15 +72,14 @@ class UnityEnv(BaseEnv):
 
         self._episode_step += 1
         done_by_timeout = self._episode_step >= self._max_episode_steps
-        
+
         done = done_by_unity or done_by_timeout
 
         next_obs = self._get_obs_from_steps(step)
-        reward = self._compute_reward(next_obs, action, done)
+        reward = self._get_reward_from_steps(decision_steps, terminal_steps)
 
         if done_by_timeout and not done_by_unity:
-            self.env.reset()
-            self._episode_step = 0
+            next_obs = self.reset()
 
         return next_obs, reward, done, {}
 

@@ -39,6 +39,12 @@ public class WolfAgent : Agent
     public float maxStandingHeight = 1.2f;   // 太高就不再額外加分
     public float fallHeightThreshold = 0.3f; // 低於這個就算跌倒
     public float minUprightDot = 0.3f;       // up.y 低於這個也算跌倒
+    [Header("Reward Parameters")]
+    public float rewardMinUpright = 0.01f;   // 對應 python 獎勵的 min_upright
+    public float rewardComK = 5f;            // 對應 python 獎勵的 com_k
+    public float rewardUprightWeight = 0.4f;
+    public float rewardGroundWeight = 0.4f;
+    public float rewardComWeight = 0.0f;     // 預設與 python 一樣關閉 COM 獎勵
 
     // 起始位置 (reset 用)
     Vector3 _startPos;
@@ -243,7 +249,47 @@ public class WolfAgent : Agent
         }
     }
 
-   /* bool IsFallen()
+    float ComputeGroundedFraction()
+    {
+        if (toeContacts == null || toeContacts.Length == 0)
+            return 0f;
+
+        float groundedCount = 0f;
+        foreach (var toe in toeContacts)
+        {
+            if (toe != null && toe.IsGrounded)
+            {
+                groundedCount += 1f;
+            }
+        }
+
+        return groundedCount / toeContacts.Length;
+    }
+
+    float ComputeReward()
+    {
+        if (hips == null)
+            return 0f;
+
+        Vector3 comLocal = hips.transform.InverseTransformPoint(ComputeCOM());
+        Vector3 up = hips.transform.up.normalized;
+
+        float upY = up.y;
+        float comXY = new Vector2(comLocal.x, comLocal.y).magnitude;
+        float groundedFrac = ComputeGroundedFraction();
+
+        float rUpright = Mathf.Clamp01((upY - rewardMinUpright) / (1f - rewardMinUpright));
+        float rCom = Mathf.Exp(-rewardComK * comXY * comXY);
+        float rGround = groundedFrac;
+
+        float reward = rewardUprightWeight * rUpright
+                     + rewardComWeight * rCom
+                     + rewardGroundWeight * rGround;
+
+        return reward;
+    }
+
+    bool IsFallen()
     {
         if (hips == null) return false;
 
@@ -251,24 +297,25 @@ public class WolfAgent : Agent
         Vector3 com = ComputeCOM();
         float height = com.y;
 
-        // 低於某高度就算跌倒
         if (height < fallHeightThreshold)
             return true;
 
-        return false;
-    }*/
+        float upY = hips.transform.up.normalized.y;
+        return upY < minUprightDot;
+    }
 
     public override void OnActionReceived(ActionBuffers actions)
     {
         var a = actions.ContinuousActions;
         ApplyJointActions(a);
 
-        /*if (IsFallen())
+        float reward = ComputeReward();
+        AddReward(reward);
+
+        if (IsFallen())
         {
-            Debug.Log("[WolfAgent] Fallen -> EndEpisode()");
             EndEpisode();          // 建議：直接結束，下一回合再站好
-            return;
-        }*/
+        }
     }
 
     void ApplyJointActions(ActionSegment<float> a)
