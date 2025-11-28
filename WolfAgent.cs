@@ -134,7 +134,7 @@ public class WolfAgent : Agent
         }
     }
 
-    void ResetToStandPose()
+    /*void ResetToStandPose()
     {
         if (hips != null)
         {
@@ -163,12 +163,12 @@ public class WolfAgent : Agent
             zd.target = 0f;
             b.zDrive = zd;
         }
-    }
+    }:*/
 
 
     public override void OnEpisodeBegin()
     {
-        ResetToStandPose();
+        //ResetToStandPose();
         stepCount = 0;
     }
 
@@ -243,7 +243,7 @@ public class WolfAgent : Agent
         }
     }
 
-    bool IsFallen()
+   /* bool IsFallen()
     {
         if (hips == null) return false;
 
@@ -256,19 +256,19 @@ public class WolfAgent : Agent
             return true;
 
         return false;
-    }
+    }*/
 
     public override void OnActionReceived(ActionBuffers actions)
     {
         var a = actions.ContinuousActions;
         ApplyJointActions(a);
 
-        if (IsFallen())
+        /*if (IsFallen())
         {
             Debug.Log("[WolfAgent] Fallen -> EndEpisode()");
             EndEpisode();          // 建議：直接結束，下一回合再站好
             return;
-        }
+        }*/
     }
 
     void ApplyJointActions(ActionSegment<float> a)
