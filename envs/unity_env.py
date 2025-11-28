@@ -5,8 +5,8 @@ from envs.base_env import BaseEnv, Box
 
 
 class UnityEnv(BaseEnv):
-    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=5000,
-                 num_toes=4, min_upright=0.85, com_k=5.0):
+    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=1000000,
+                 num_toes=16, min_upright=0.01, com_k=5.0):
         file_name = executable_path
         self.env = UnityEnvironment(file_name=file_name, no_graphics=not render)
         self.env.reset()
@@ -76,12 +76,9 @@ class UnityEnv(BaseEnv):
 
         reward = (
             0.4 * r_upright +
-            0.4 * r_com +
-            0.2 * r_ground
+            #0.4 * r_com +
+            0.4 * r_ground
         )
-
-        if done:
-            reward -= 1.0
 
         return reward
 
