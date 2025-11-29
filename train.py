@@ -52,7 +52,8 @@ class Workspace(object):
 
         self.cfg = cfg
         self.device = torch.device(cfg["device"])
-
+        self.step = 0
+        
         agent_name = cfg["agent"].get("name", "agent")
 
         self.logger = Logger(
@@ -90,21 +91,33 @@ class Workspace(object):
             self.device
         )
 
-        self.step = 0
+        self.checkpoint_path = cfg.get("checkpoint_path", None)
 
-    def evaluate(self):
+
+    def evaluate(self, checkpoint_path=None):
+        if checkpoint_path is not None:
+            utils.load_agent(self.agent, checkpoint_path)
+        elif self.checkpoint_path is not None:
+            utils.load_agent(self.agent, self.checkpoint_path)
+
         avg_reward = 0
         for episode in range(self.cfg["num_eval_episodes"]):
             obs = self.env.reset()
             self.agent.reset()
             done = False
-            ep_reward = 0
+            ep_reward = 0.0
 
             while not done:
                 with utils.eval_mode(self.agent):
-                    action = self.agent.act(obs, sample=False)
+                    actions = []
+                    num_agents = obs.shape[0]
+                    for i in range(num_agents):
+                        act = self.agent.act(obs[i], sample=False) # (action_dim,)
+                        actions.append(act)
+                    action = np.stack(actions, axis=0)  # (num_agents, action_dim
+
                 obs, reward, done, _ = self.env.step(action)
-                ep_reward += reward
+                ep_reward += float(np.mean(reward))
 
             avg_reward += ep_reward
 
@@ -115,6 +128,9 @@ class Workspace(object):
     def run(self):
         episode, episode_reward, done = 0, 0, True
         start = time.time()
+
+        obs = self.env.reset()
+        num_agents = obs.shape[0]
 
         while self.step < self.cfg["num_train_steps"]:
             if done:
@@ -130,6 +146,7 @@ class Workspace(object):
                 self.logger.log('train/episode_reward', episode_reward, self.step)
 
                 obs = self.env.reset()
+                num_agents = obs.shape[0]
                 self.agent.reset()
                 done = False
                 episode_reward = 0
@@ -140,10 +157,22 @@ class Workspace(object):
 
             # collect action
             if self.step < self.cfg["num_seed_steps"]:
-                action = self.env.action_space.sample()
+                # 隨機動作: (num_agents, action_dim)
+                low = self.env.action_space.low
+                high = self.env.action_space.high
+                action = np.random.uniform(
+                    low=low,
+                    high=high,
+                    size=(num_agents, self.cfg["agent"]["action_dim"])
+                )
             else:
+                # SACAgent 只懂「單 obs」，所以一個 agent 一個 act
+                actions = []
                 with utils.eval_mode(self.agent):
-                    action = self.agent.act(obs, sample=True)
+                    for i in range(num_agents):
+                        act = self.agent.act(obs[i], sample=True) # (action_dim,)
+                        actions.append(act)
+                action = np.stack(actions, axis=0)  # (num_agents, action_dim)
 
             # train
             if self.step >= self.cfg["num_seed_steps"]:
@@ -152,18 +181,37 @@ class Workspace(object):
             next_obs, reward, done, _ = self.env.step(action)
 
             done_f = float(done)
-            done_no_max = 0 if episode_step + 1 == self.env._max_episode_steps else done_f
+            done_no_max = 0.0 if episode_step + 1 == self.env._max_episode_steps else done_f
 
-            episode_reward += reward
-
-            self.replay_buffer.add(obs, action, reward, next_obs, done_f, done_no_max)
+            step_reward = float(np.mean(reward))
+            episode_reward += step_reward
+            # ---- 多 agent -> 多筆 sample 塞進 replay buffer ----
+            for i in range(num_agents):
+                self.replay_buffer.add(
+                    obs[i], 
+                    action[i], 
+                    np.array([reward[i]], dtype=np.float32), # buffer 裡 rewards 是 (capacity, 1)
+                    next_obs[i], 
+                    done_f, 
+                    done_no_max
+                    )
 
             obs = next_obs
             episode_step += 1
             self.step += 1
-            # periodic console status so user can see training progress
-            #if self.step % 100 == 0:
-               #print(f"[train] step={self.step} episode={episode} episode_step={episode_step} episode_reward={episode_reward:.3f}")
+            
+            # ---- checkpoint saving ----
+            if self.cfg.get("Save_Agent", False):
+                save_freq = self.cfg.get("save_frequency", 100000)
+                if self.step % save_freq == 0:
+                    ckpt_path = self.checkpoint_path
+                    if ckpt_path is None:
+                        ckpt_path = os.path.join(
+                            self.work_dir, 
+                            "checkpoints",
+                            f"ckpt_{self.step}.pt"
+                        )
+                    utils.save_agent(self.agent, ckpt_path)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -193,6 +241,14 @@ def parse_args():
         help="Override seed in config (optional)."
     )
 
+    # 可選：指定 checkpoint path（eval 時會用到）
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help="Path to agent checkpoint (for eval mode)."
+    )
+
     return parser.parse_args()
 
 def main():
@@ -203,11 +259,13 @@ def main():
     if args.seed is not None:
         cfg["seed"] = args.seed
 
+    if args.checkpoint_path is not None:
+        cfg["checkpoint_path"] = args.checkpoint_path
+
     workspace = Workspace(cfg)
     if args.mode == "train":
         workspace.run()
     elif args.mode == "eval":
-        # 簡單版：只做幾次 evaluate，不訓練
         workspace.evaluate()
     else:
         raise ValueError(f"Unknown mode: {args.mode}")

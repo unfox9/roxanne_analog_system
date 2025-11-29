@@ -102,3 +102,24 @@ def to_np(t):
         return np.array([])
     else:
         return t.cpu().detach().numpy()
+    
+def save_agent(agent, path: str):
+    dir_path = os.path.dirname(path)
+    if dir_path != '':
+        make_dir(dir_path)
+    payload = {
+        "actor": agent.actor.state_dict(),
+        "critic": agent.critic.state_dict(),
+        "critic_target": agent.critic_target.state_dict(),
+    }
+    if hasattr(agent, "log_alpha"):
+        payload["log_alpha"] = agent.log_alpha.detach().cpu()
+    torch.save(payload, path)
+
+def load_agent(agent, path: str):
+    payload = torch.load(path, map_location=agent.device)
+    agent.actor.load_state_dict(payload["actor"])
+    agent.critic.load_state_dict(payload["critic"])
+    agent.critic_target.load_state_dict(payload["critic_target"])
+    if "log_alpha" in payload and hasattr(agent, "log_alpha"):
+        agent.log_alpha = payload["log_alpha"].to(agent.device)

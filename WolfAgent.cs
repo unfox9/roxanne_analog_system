@@ -32,22 +32,9 @@ public class WolfAgent : Agent
     public JointControl[] joints;
 
     [Header("Decision")]
-    public int decisionInterval = 5;
+    public int decisionInterval = 1;
     int stepCount = 0;
 
-    // 站立任務相關參數
-    [Header("Standing Task")]
-    public float minStandingHeight = 0.6f;   // 站立時大概的 y 高度 (可以視模型改)
-    public float maxStandingHeight = 1.2f;   // 太高就不再額外加分
-    public float fallHeightThreshold = 0.3f; // 低於這個就算跌倒
-    public float minUprightDot = 0.3f;       // up.y 低於這個也算跌倒
-    public float fallPenalty = 1.0f;          // 跌倒懲罰
-    [Header("Reward Parameters")]
-    public float rewardMinUpright = 0.01f;   // 對應 python 獎勵的 min_upright
-    public float rewardComK = 5f;            // 對應 python 獎勵的 com_k
-    public float rewardUprightWeight = 0.4f;
-    public float rewardGroundWeight = 0.4f;
-    public float rewardComWeight = 0.4f;     // 預設與 python 一樣關閉 COM 獎勵
 
     // 起始位置 (reset 用)
     Vector3 _startPos;
@@ -303,6 +290,29 @@ public class WolfAgent : Agent
         return groundedCount / toeContacts.Length;
     }
 
+
+    // 站立任務相關參數
+    [Header("Standing Task")]
+    public float minStandingHeight = 0.6f;   // 站立時大概的 y 高度 (可以視模型改)
+    public float maxStandingHeight = 1.2f;   // 太高就不再額外加分
+    public float fallHeightThreshold = 0.3f; // 低於這個就算跌倒
+    public float minUprightDot = 0.3f;       // up.y 低於這個也算跌倒
+    public float fallPenalty = 1.0f;          // 跌倒懲罰
+    [Header("Reward Parameters")]
+    public float rewardMinUpright = 0.01f;   // 對應 python 獎勵的 min_upright
+    public float rewardComK = 5f;            // 對應 python 獎勵的 com_k
+    public float rewardUprightWeight = 0.4f;
+    public float rewardGroundWeight = 0.4f;
+    public float rewardComWeight = 0.4f;     
+    [Header("Stability / Velocity")]
+    public float velK = 0.5f;              // 速度懲罰的強度
+    public float rewardVelocityWeight = 0.2f;
+
+    [Header("Height Reward")]
+    public float rewardHeightWeight = 0.2f;
+
+    [Header("Alive Bonus")]
+    public float aliveBonus = 0.01f;       // 每 step 存活加多少
     float ComputeReward()
     {
         if (hips == null)
@@ -313,15 +323,37 @@ public class WolfAgent : Agent
 
         float upY = up.y;
         float comXY = new Vector2(comLocal.x, comLocal.z).magnitude;
-        float groundedFrac = ComputeGroundedFraction();
+        float groundedFrac = ComputeGroundedFraction(); // 0~1
 
-        float rUpright = Mathf.Clamp01((upY - rewardMinUpright) / (1f - rewardMinUpright));
+        // 1. 站立獎勵 越直越接近1
+        float rUpright = Mathf.Clamp01(
+            (upY - rewardMinUpright) / (1f - rewardMinUpright)
+        );
+        // COM：越靠近投影中心越接近 1
         float rCom = Mathf.Exp(-rewardComK * comXY * comXY);
+
+        // 腳趾接地比例
         float rGround = groundedFrac;
 
+
+        // 這裡拿的是線速度
+        Vector3 hipVel = hips.velocity;
+        float linVel = hipVel.magnitude;
+
+        float rVel = Mathf.Exp(-velK * linVel * linVel);
+
+        float hipY = hips.transform.position.y;
+
+        // 把高度壓到 0~1：介於 minStandingHeight 和 maxStandingHeight 之間才有分
+        float hNorm = Mathf.InverseLerp(minStandingHeight, maxStandingHeight, hipY);
+        float rHeight = Mathf.Clamp01(hNorm);
+
+        // 4) 加權合成
         float reward = rewardUprightWeight * rUpright
                      + rewardComWeight * rCom
-                     + rewardGroundWeight * rGround;
+                     + rewardGroundWeight * rGround
+                     + rewardVelocityWeight * rVel
+                     + rewardHeightWeight * rHeight;
 
 
         return reward;
@@ -329,17 +361,25 @@ public class WolfAgent : Agent
 
     bool IsFallen()
     {
-        if (hips == null) return false;
+        // hips 沒設好就直接當作倒了，避免怪狀況
+        if (hips == null)
+        return true;
 
-        // world-space COM
-        Vector3 com = ComputeCOM();
-        float height = com.y;
-
-        if (height < fallHeightThreshold)
+        // 1) 用 hips 的世界座標高度判斷是否跌倒
+        float hipY = hips.transform.position.y;
+        if (hipY < fallHeightThreshold)
             return true;
 
-        float upY = hips.transform.up.normalized.y;
-        return upY < minUprightDot;
+        // 2) 用「朝上的程度」判斷是否翻太歪
+        // Dot(hips.up, worldUp) 介於 -1 ~ 1
+        float upDot = Vector3.Dot(hips.transform.up.normalized, Vector3.up);
+
+        // minUprightDot 建議設在 0.2 ~ 0.4 左右
+        if (upDot < minUprightDot)
+            return true;
+
+        // 以上條件都沒中，就當作還活著
+        return false;
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -347,14 +387,19 @@ public class WolfAgent : Agent
         var a = actions.ContinuousActions;
         ApplyJointActions(a);
 
-        float reward = ComputeReward();
-        AddReward(reward);
-
         if (IsFallen())
         {
             AddReward(-fallPenalty); // 跌倒懲罰
             EndEpisode();          // 建議：直接結束，下一回合再站好
             return;
+        }
+
+        float reward = ComputeReward();
+        AddReward(reward);
+        if (hips.transform.position.y > minStandingHeight &&
+            Vector3.Dot(hips.transform.up, Vector3.up) > minUprightDot)
+        {
+            AddReward(aliveBonus); // 存活獎勵
         }
     }
 

@@ -11,10 +11,15 @@ executable_path:
 decision_interval: 1
 render: true
 
+#  Save agent
+Save_Agent: true
+save_frequency: 10000
+checkpoint_path: 
+
 # Replay buffer & training schedule
 replay_buffer_capacity: 1000000
 num_train_steps: 1000000
-num_seed_steps: 1000
+num_seed_steps: 10000
 eval_frequency: 10000
 num_eval_episodes: 10
 
