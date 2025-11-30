@@ -119,12 +119,12 @@ public class WolfAgent : Agent
     void FixedUpdate()
     {
         
-        if (hips != null)
+        /*if (hips != null)
         {
             float hipY = hips.transform.position.y;
             float comY = ComputeCOM().y;
             Debug.Log($"hip worldY = {hipY:F3}, COM worldY = {comY:F3}");
-        }
+        }*/
 
         // 自己控制何時要 decision，不用 DecisionRequester
         stepCount++;

@@ -97,27 +97,26 @@ class Workspace(object):
     def evaluate(self, checkpoint_path=None):
         if checkpoint_path is not None:
             utils.load_agent(self.agent, checkpoint_path)
-        elif self.checkpoint_path is not None:
-            utils.load_agent(self.agent, self.checkpoint_path)
 
         avg_reward = 0
         for episode in range(self.cfg["num_eval_episodes"]):
             obs = self.env.reset()
             self.agent.reset()
-            done = False
+            done_any = False
             ep_reward = 0.0
 
-            while not done:
+            while not done_any:
                 with utils.eval_mode(self.agent):
                     actions = []
                     num_agents = obs.shape[0]
                     for i in range(num_agents):
                         act = self.agent.act(obs[i], sample=False) # (action_dim,)
                         actions.append(act)
-                    action = np.stack(actions, axis=0)  # (num_agents, action_dim
+                    action = np.stack(actions, axis=0).astype(np.float32)  # (num_agents, action_dim
 
                 obs, reward, done, _ = self.env.step(action)
                 ep_reward += float(np.mean(reward))
+                done_any = bool(done.any())
 
             avg_reward += ep_reward
 
@@ -126,35 +125,16 @@ class Workspace(object):
         self.logger.dump(self.step)
 
     def run(self):
-        episode, episode_reward, done = 0, 0, True
+        episode = 0
         start = time.time()
 
         obs = self.env.reset()
         num_agents = obs.shape[0]
 
+        episode_step = np.zeros(num_agents, dtype=np.int32)
+        episode_reward = np.zeros(num_agents, dtype=np.float32)
+
         while self.step < self.cfg["num_train_steps"]:
-            if done:
-                if self.step > 0:
-                    self.logger.log('train/duration', time.time() - start, self.step)
-                    start = time.time()
-                    self.logger.dump(self.step, save=(self.step > self.cfg["num_seed_steps"]))
-
-                if self.step > 0 and self.step % self.cfg["eval_frequency"] == 0:
-                    self.logger.log('eval/episode', episode, self.step)
-                    self.evaluate()
-
-                self.logger.log('train/episode_reward', episode_reward, self.step)
-
-                obs = self.env.reset()
-                num_agents = obs.shape[0]
-                self.agent.reset()
-                done = False
-                episode_reward = 0
-                episode_step = 0
-                episode += 1
-
-                self.logger.log('train/episode', episode, self.step)
-
             # collect action
             if self.step < self.cfg["num_seed_steps"]:
                 # 隨機動作: (num_agents, action_dim)
@@ -164,7 +144,7 @@ class Workspace(object):
                     low=low,
                     high=high,
                     size=(num_agents, self.cfg["agent"]["action_dim"])
-                )
+                ).astype(np.float32)
             else:
                 # SACAgent 只懂「單 obs」，所以一個 agent 一個 act
                 actions = []
@@ -172,7 +152,7 @@ class Workspace(object):
                     for i in range(num_agents):
                         act = self.agent.act(obs[i], sample=True) # (action_dim,)
                         actions.append(act)
-                action = np.stack(actions, axis=0)  # (num_agents, action_dim)
+                action = np.stack(actions, axis=0).astype(np.float32)  # (num_agents, action_dim)
 
             # train
             if self.step >= self.cfg["num_seed_steps"]:
@@ -180,25 +160,59 @@ class Workspace(object):
 
             next_obs, reward, done, _ = self.env.step(action)
 
-            done_f = float(done)
-            done_no_max = 0.0 if episode_step + 1 == self.env._max_episode_steps else done_f
+            done = done.astype(np.float32)  # (num_agents,)
+            done_no_max = done.copy()
 
-            step_reward = float(np.mean(reward))
-            episode_reward += step_reward
             # ---- 多 agent -> 多筆 sample 塞進 replay buffer ----
             for i in range(num_agents):
                 self.replay_buffer.add(
                     obs[i], 
                     action[i], 
-                    np.array([reward[i]], dtype=np.float32), # buffer 裡 rewards 是 (capacity, 1)
+                    np.array([reward[i]], dtype=np.float32), 
                     next_obs[i], 
-                    done_f, 
-                    done_no_max
+                    float(done[i]), 
+                    float(done_no_max[i]),
                     )
 
+                episode_reward[i] += reward[i]
+                episode_step[i] += 1
+
+                if done[i] > 0.5:
+                    self.logger.log(
+                        'train/episode_reward', 
+                        episode_reward[i], 
+                        self.step
+                    )
+                    self.logger.log(
+                        'train/episode_length', 
+                        episode_step[i], 
+                        self.step
+                    )
+
+                    # reset this agent
+                    episode += 1
+                    episode_reward[i] = 0.0
+                    episode_step[i] = 0 
+
             obs = next_obs
-            episode_step += 1
             self.step += 1
+
+            # ---- logging ----
+            if self.step % self.cfg["log_frequency"] == 0:
+                self.logger.log('train/episode', episode, self.step)
+                self.logger.log('train/duration', time.time() - start, self.step)
+                start = time.time()
+                self.logger.dump(self.step, save=(self.step > self.cfg["num_seed_steps"]))
+
+            if self.step > 0 and self.step % self.cfg["eval_frequency"] == 0:
+                self.logger.log('eval/episode', episode, self.step)
+                self.evaluate()
+
+                obs = self.env.reset()
+                num_agents = obs.shape[0]
+                episode_step[:] = 0
+                episode_reward[:] = 0.0
+       
             
             # ---- checkpoint saving ----
             if self.cfg.get("Save_Agent", False):

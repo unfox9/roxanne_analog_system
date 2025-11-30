@@ -8,12 +8,12 @@ log_frequency: 10000
 # Environment
 env: "unity_env"
 executable_path: 
-decision_interval: 1
+decision_interval: 5
 render: true
 
 #  Save agent
 Save_Agent: true
-save_frequency: 10000
+save_frequency: 100000
 checkpoint_path: 
 
 # Replay buffer & training schedule
@@ -27,7 +27,7 @@ num_eval_episodes: 10
 agent:
   name: "sac"  
   # obs_dim / action_dim / action_range / device 會在程式裡自動填
-  discount: 0.99
+  discount: 0.999
   init_temperature: 0.1
 
   alpha_lr: 1e-4

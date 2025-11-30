@@ -112,9 +112,8 @@ def save_agent(agent, path: str):
         "critic": agent.critic.state_dict(),
         "critic_target": agent.critic_target.state_dict(),
     }
-    if hasattr(agent, "log_alpha"):
-        payload["log_alpha"] = agent.log_alpha.detach().cpu()
-    torch.save(payload, path)
+    if "log_alpha" in payload and hasattr(agent, "log_alpha"):
+        agent.log_alpha.data.copy_(payload["log_alpha"].to(agent.device))
 
 def load_agent(agent, path: str):
     payload = torch.load(path, map_location=agent.device)
