@@ -13,7 +13,7 @@ render: true
 
 #  Save agent
 Save_Agent: true
-save_frequency: 10
+save_frequency: 100000
 checkpoint_path: 
 
 # Replay buffer & training schedule

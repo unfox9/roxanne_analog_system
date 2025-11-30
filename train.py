@@ -280,7 +280,11 @@ def main():
     if args.mode == "train":
         workspace.run()
     elif args.mode == "eval":
-        workspace.evaluate()
+        ckpt_path = cfg.get("checkpoint_path", None)
+
+        if ckpt_path is None:
+            print("Please provide checkpoint path for evaluation.")
+        workspace.evaluate(checkpoint_path=ckpt_path)
     else:
         raise ValueError(f"Unknown mode: {args.mode}")
 
