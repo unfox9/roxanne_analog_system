@@ -48,20 +48,32 @@ class UnityEnv(BaseEnv):
         reward = np.zeros((self.num_agents,), dtype=np.float32)
         done = np.zeros((self.num_agents,), dtype=bool)
 
-        for i, agent_id in enumerate(decision_steps.agent_id):
-            idx = self.id_to_index[agent_id]
-            per_agent_obs = [arr[i].reshape(-1) for arr in decision_steps.obs]
-            obs[idx] = np.concatenate(per_agent_obs)
-            reward[idx] = decision_steps.reward[i]
-            done[idx] = False
-        
-        for i, agent_id in enumerate(terminal_steps.agent_id):
-            idx = self.id_to_index[agent_id]
-            per_agent_obs = [arr[i].reshape(-1) for arr in terminal_steps.obs]
-            obs[idx] = np.concatenate(per_agent_obs)
-            reward[idx] = terminal_steps.reward[i]
-            done[idx] = True
 
+        def fill_from_steps(steps, is_termial: bool):
+            for step_idx, agent_id in enumerate(steps.agent_id):
+                agent_id_int = int(agent_id)
+
+                if agent_id_int not in self.id_to_index:
+                    new_idx = len(self.id_to_index)
+                    if new_idx >= self.num_agents:
+                        raise ValueError("New agent appeared beyond initial num_agents.")
+                    
+                    self.id_to_index[agent_id_int] = new_idx
+                
+                idx = self.id_to_index[agent_id_int]
+
+                per_agent_obs = []
+                for arr in steps.obs:
+                    per_agent_obs.append(arr[step_idx].reshape(-1))
+                obs[idx] = np.concatenate(per_agent_obs)
+
+                reward[idx] = steps.reward[step_idx]
+                if is_termial:
+                    done[idx] = 1.0
+
+        fill_from_steps(decision_steps, is_termial=False)
+        fill_from_steps(terminal_steps, is_termial=True)
+                
         return obs, reward, done
 
     def reset(self):
