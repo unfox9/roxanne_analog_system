@@ -13,14 +13,14 @@ render: true
 
 #  Save agent
 Save_Agent: true
-save_frequency: 100000
+save_frequency: 10
 checkpoint_path: 
 
 # Replay buffer & training schedule
 replay_buffer_capacity: 1000000
 num_train_steps: 1000000
 num_seed_steps: 10000
-eval_frequency: 10000
+eval_frequency: 100000
 num_eval_episodes: 10
 
 # ---- Agent 設定（對應 SACAgent 參數）----
