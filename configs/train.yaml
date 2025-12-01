@@ -19,7 +19,7 @@ checkpoint_path:
 # Replay buffer & training schedule
 replay_buffer_capacity: 1000000
 num_train_steps: 1000000
-num_seed_steps: 10000
+num_seed_steps: 50000
 eval_frequency: 100000
 num_eval_episodes: 10
 

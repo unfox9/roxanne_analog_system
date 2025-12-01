@@ -40,6 +40,8 @@ public class WolfAgent : Agent
     Vector3 _startPos;
     Quaternion _startRot;
 
+    Vector3 _rootStartPos;
+    Quaternion _rootStartRot;
     // 用來畫 COM 的 cache
     ArticulationBody[] _bodies;
 
@@ -48,6 +50,11 @@ public class WolfAgent : Agent
     void Start()
     {
         // 1. 記錄 Hips 的初始狀態
+        if (root != null)
+        {
+            _rootStartPos = root.transform.position;
+            _rootStartRot = root.transform.rotation;
+        }
         if (hips != null)
         {
             _startPos = hips.transform.position;
@@ -141,8 +148,10 @@ public class WolfAgent : Agent
         ArticulationBody anchor = root != null ? root : hips;
         if (anchor != null)
         {
-            // 這行是瞬移的關鍵
-            anchor.TeleportRoot(_startPos, _startRot);
+            if (anchor == null)
+                anchor.TeleportRoot(_rootStartPos, _rootStartRot);
+            else
+                anchor.TeleportRoot(_startPos, _startRot);
             
             // 歸零速度
             anchor.velocity = Vector3.zero;
@@ -202,66 +211,52 @@ public class WolfAgent : Agent
         stepCount = 0;
     }
 
+    int GetObsSize()
+    {
+        int rootDim = 13;
+        int jointDim = 6 * joints.Length; 
+        int toeDim = toeContacts != null ? toeContacts.Length : 0;
+        return rootDim + jointDim + toeDim;
+    }
 
     public override void CollectObservations(VectorSensor sensor)
     {
         if (hips == null)
         {
-            // 設錯參考的話至少不會爆
-            sensor.AddObservation(0f); // height
-            sensor.AddObservation(Vector3.zero); // velLocal
-            sensor.AddObservation(Vector3.up);   // up
-            sensor.AddObservation(Vector3.forward); // forward
+            int dim = GetObsSize();
+            for (int i = 0; i < dim; i++)
+                sensor.AddObservation(0f);
             return;
         }
 
-    // ========= 1. root 資訊 (10) =============
+    // 假設狼娘臀部高度大概不會超過 2m
+    float maxHipHeight = 2f;
+    float hipYNorm = Mathf.Clamp01(hips.transform.position.y / maxHipHeight);
+    sensor.AddObservation(hipYNorm);
 
-    // height
-    sensor.AddObservation(hips.transform.position.y);
-
-    // local velocity
+    // 假設最快 10 m/s，超過就 clamp
     Vector3 velLocal = hips.transform.InverseTransformDirection(hips.velocity);
-    sensor.AddObservation(velLocal);
+    Vector3 velNorm = Vector3.ClampMagnitude(velLocal / 10f, 1f);
+    sensor.AddObservation(velNorm);
 
-    // up / forward
+    // up / fwd 本來就 [-1,1]，留著
     Vector3 up = hips.transform.up.normalized;
     Vector3 fwd = hips.transform.forward.normalized;
-
     sensor.AddObservation(up);
     sensor.AddObservation(fwd);
 
-    // COM：用 hips 當 local 參考
+    // COM local，假設身長 ~2m
     Vector3 comWorld = ComputeCOM();
     Vector3 comLocal = hips.transform.InverseTransformPoint(comWorld);
+    Vector3 comNorm = Vector3.ClampMagnitude(comLocal / 2f, 1f);
+    sensor.AddObservation(comNorm);
 
-    sensor.AddObservation(comLocal);   // 這裡多 3 維
 
-    // ========= 2. joints 資訊 (7 * joints.Count) ===========
+        // ========= 2. joints 資訊  ===========
         foreach (var jc in joints)
         {
-            var b = jc.body;
-            if (b == null)
-            {
-                // 補零保持維度固定
-                sensor.AddObservation(new float[7]);
-                continue;
-            }
-
-        Transform t = b.transform;
-
-        // local rotation (相對 parent)
-        Quaternion q = t.localRotation.normalized;
-        sensor.AddObservation(q.x);
-        sensor.AddObservation(q.y);
-        sensor.AddObservation(q.z);
-        sensor.AddObservation(q.w);
-
-        // local angular velocity
-        Vector3 angVelLocal = t.InverseTransformDirection(b.angularVelocity);
-        sensor.AddObservation(angVelLocal);
+            AddJointObs(sensor, jc);
         }
-
         // ========= 3. 腳趾接地 (toe contacts) ===========
         if (toeContacts != null)
         {
@@ -271,6 +266,54 @@ public class WolfAgent : Agent
                 sensor.AddObservation(grounded);
             }
         }
+    }
+
+    float NormalizeAngle(float angleDeg, float minDeg, float maxDeg)
+    {
+        float center = 0.5f * (minDeg + maxDeg);
+        float halfRange = 0.5f * (maxDeg - minDeg);
+        if (halfRange < 1e-3f) return 0f;
+        return Mathf.Clamp((angleDeg - center) / halfRange, -1f, 1f);
+    }
+
+    void AddJointObs(VectorSensor sensor, JointControl jc)
+    {
+        var b = jc.body;
+        if (b == null)
+        {
+        // 6 維佔位
+            sensor.AddObservation(new float[6]);
+            return;
+        }
+
+        var jp = b.jointPosition;
+        var jv = b.jointVelocity;
+        int dof = b.dofCount;  // 安全一點
+
+        // X 軸
+        float xDeg = (dof > 0) ? jp[0] * Mathf.Rad2Deg : 0f;
+        float vx = (dof > 0) ? jv[0] : 0f;
+        float xNorm = NormalizeAngle(xDeg, jc.minXTarget, jc.maxXTarget);
+        float vxNorm = Mathf.Clamp(vx / 20f, -1f, 1f);
+
+        // Y 軸
+        float yDeg = (dof > 1) ? jp[1] * Mathf.Rad2Deg : 0f;
+        float vy = (dof > 1) ? jv[1] : 0f;
+        float yNorm = NormalizeAngle(yDeg, jc.minYTarget, jc.maxYTarget);
+        float vyNorm = Mathf.Clamp(vy / 20f, -1f, 1f);
+
+        // Z 軸
+        float zDeg = (dof > 2) ? jp[2] * Mathf.Rad2Deg : 0f;
+        float vz = (dof > 2) ? jv[2] : 0f;
+        float zNorm = NormalizeAngle(zDeg, jc.minZTarget, jc.maxZTarget);
+        float vzNorm = Mathf.Clamp(vz / 20f, -1f, 1f);
+
+        sensor.AddObservation(xNorm);
+        sensor.AddObservation(yNorm);
+        sensor.AddObservation(zNorm);
+        sensor.AddObservation(vxNorm);
+        sensor.AddObservation(vyNorm);
+        sensor.AddObservation(vzNorm);
     }
 
     float ComputeGroundedFraction()
