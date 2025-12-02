@@ -104,23 +104,19 @@ def to_np(t):
         return t.cpu().detach().numpy()
     
 def save_agent(agent, path: str):
-    # 建資料夾
     dir_path = os.path.dirname(path)
     if dir_path != "":
         os.makedirs(dir_path, exist_ok=True)
 
-    # 要存的內容
     payload = {
         "actor": agent.actor.state_dict(),
         "critic": agent.critic.state_dict(),
         "critic_target": agent.critic_target.state_dict(),
     }
 
-    # 把 log_alpha 一起存起來（如果有的話）
     if hasattr(agent, "log_alpha"):
         payload["log_alpha"] = agent.log_alpha.detach().cpu()
 
-    # 這行才是關鍵：真的寫進硬碟
     torch.save(payload, path)
 
 

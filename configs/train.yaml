@@ -1,4 +1,4 @@
-# ---- 全域設定 ----
+# Training configuration for SAC agent on Unity environment
 seed: 0
 device: "cuda:1"
 
@@ -11,22 +11,22 @@ executable_path:
 decision_interval: 1
 render: true
 
-#  Save agent
+# Save agent
 Save_Agent: true
-save_frequency: 100000
+save_frequency: 1000000
 checkpoint_path: 
 
 # Replay buffer & training schedule
-replay_buffer_capacity: 1000000
-num_train_steps: 1000000
-num_seed_steps: 50000
+replay_buffer_capacity: 10000000
+num_train_steps: 10000000
+num_seed_steps: 100000
 eval_frequency: 100000
 num_eval_episodes: 10
 
-# ---- Agent 設定（對應 SACAgent 參數）----
+# Agent specific parameters
 agent:
   name: "sac"  
-  # obs_dim / action_dim / action_range / device 會在程式裡自動填
+  # obs_dim / action_dim / action_range will be automatically set
   discount: 0.999
   init_temperature: 0.1
 
@@ -42,14 +42,14 @@ agent:
   critic_tau: 0.005
   critic_target_update_frequency: 2
 
-  batch_size: 2048
+  batch_size: 4096
   learnable_temperature: true
 
   critic_cfg:
-    hidden_dim: 1024
+    hidden_dim: 2048
     hidden_depth: 2
 
   actor_cfg:
-    hidden_dim: 1024
+    hidden_dim: 2048
     hidden_depth: 2
     log_std_bounds: [-5, 2]

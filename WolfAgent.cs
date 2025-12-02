@@ -52,7 +52,6 @@ public class WolfAgent : Agent
             _startPos = hips.transform.position;
             _startRot = hips.transform.rotation;
         }
-
     }
 
     Vector3 ComputeCOM()
@@ -121,7 +120,6 @@ public class WolfAgent : Agent
 
     void ResetToStandPose()
     {
-        // Root set as hips
         if (root != null)
         {
             root.TeleportRoot(_rootStartPos, _rootStartRot);
@@ -187,6 +185,7 @@ public class WolfAgent : Agent
 
         _prevSupportDist = 0f;
         _hasPrevSupport = false;
+        _hasPrevAction = false;
     }
 
     int GetObsSize()
@@ -306,14 +305,14 @@ public class WolfAgent : Agent
                 groundedCount++;
 
                 Vector3 toeLocal = hips.transform.InverseTransformPoint(toe.transform.position);
-                supportCenteer += new Vector2(toeLocal.x, toeLocal.z);
+                supportCenter += new Vector2(toeLocal.x, toeLocal.z);
             }
         }
 
         if (groundedCount == 0)
             return 0f;
         
-        supportCenteer /= groundedCount;
+        supportCenter /= groundedCount;
 
         Vector3 comLocal = hips.transform.InverseTransformPoint(comWorld);
         Vector2 comXZ = new Vector2(comLocal.x, comLocal.z);
@@ -400,6 +399,7 @@ public class WolfAgent : Agent
                      + rewardVelocityWeight * rVel
                      + rewardHeightWeight * rHeight;
 
+        reward *= 0.3f;
         return reward;
     }
 
@@ -426,6 +426,7 @@ public class WolfAgent : Agent
     public float actionL2Weight = 0.001f;
     public float actionSmoothWeight = 0.001f;
     float[] _prevAction;
+    bool _hasPrevAction;
 
     public override void OnActionReceived(ActionBuffers actions)
     {
@@ -451,10 +452,15 @@ public class WolfAgent : Agent
         {
             float v = a[i];
             actL2 += v * v;
-            float diff = v - _prevAction[i];
-            smooth += diff * diff;
+            if (_hasPrevAction)
+            {
+                float diff = v - _prevAction[i];
+                smooth += diff * diff;
+            }
             _prevAction[i] = v;
         }
+        _hasPrevAction = true;
+
         actL2 /= a.Length;
         smooth /= a.Length;
         float regPenalty = 

@@ -25,7 +25,7 @@ def load_yaml(path):
 
 
 def make_env(cfg):
-    suite = cfg["env"]  # "unity_env"
+    suite = cfg["env"]
 
     if suite == "unity_env":
         from envs.unity_env import UnityEnv
@@ -70,14 +70,13 @@ class Workspace(object):
         obs_dim = self.env.observation_space.shape[0]
         action_dim = self.env.action_space.shape[0]
 
-        # 塞入 agent config
         cfg["agent"]["obs_dim"] = obs_dim
         cfg["agent"]["action_dim"] = action_dim
         cfg["agent"]["action_range"] = [
             float(self.env.action_space.low.min()),
             float(self.env.action_space.high.max()),
         ]
-        # 統一用頂層 device
+
         cfg["agent"]["device"] = cfg["device"]
 
         # instantiate agent manually
@@ -110,9 +109,9 @@ class Workspace(object):
                     actions = []
                     num_agents = obs.shape[0]
                     for i in range(num_agents):
-                        act = self.agent.act(obs[i], sample=False) # (action_dim,)
+                        act = self.agent.act(obs[i], sample=False) 
                         actions.append(act)
-                    action = np.stack(actions, axis=0).astype(np.float32)  # (num_agents, action_dim
+                    action = np.stack(actions, axis=0).astype(np.float32)  
 
                 obs, reward, done, _ = self.env.step(action)
                 ep_reward += float(np.mean(reward))
@@ -137,7 +136,6 @@ class Workspace(object):
         while self.step < self.cfg["num_train_steps"]:
             # collect action
             if self.step < self.cfg["num_seed_steps"]:
-                # 隨機動作: (num_agents, action_dim)
                 low = self.env.action_space.low
                 high = self.env.action_space.high
                 action = np.random.uniform(
@@ -146,13 +144,12 @@ class Workspace(object):
                     size=(num_agents, self.cfg["agent"]["action_dim"])
                 ).astype(np.float32)
             else:
-                # SACAgent 只懂「單 obs」，所以一個 agent 一個 act
                 actions = []
                 with utils.eval_mode(self.agent):
                     for i in range(num_agents):
-                        act = self.agent.act(obs[i], sample=True) # (action_dim,)
+                        act = self.agent.act(obs[i], sample=True) 
                         actions.append(act)
-                action = np.stack(actions, axis=0).astype(np.float32)  # (num_agents, action_dim)
+                action = np.stack(actions, axis=0).astype(np.float32) 
 
             # train
             if self.step >= self.cfg["num_seed_steps"]:
@@ -160,10 +157,9 @@ class Workspace(object):
 
             next_obs, reward, done, _ = self.env.step(action)
 
-            done = done.astype(np.float32)  # (num_agents,)
+            done = done.astype(np.float32)  
             done_no_max = done.copy()
 
-            # ---- 多 agent -> 多筆 sample 塞進 replay buffer ----
             for i in range(num_agents):
                 self.replay_buffer.add(
                     obs[i], 
@@ -189,7 +185,6 @@ class Workspace(object):
                         self.step
                     )
 
-                    # reset this agent
                     episode += 1
                     episode_reward[i] = 0.0
                     episode_step[i] = 0 
@@ -230,7 +225,6 @@ class Workspace(object):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # 指定要用哪個 config 檔
     parser.add_argument(
         "--config",
         type=str,
@@ -238,7 +232,6 @@ def parse_args():
         help="Path to YAML config file."
     )
 
-    # 指定模式：train 或 eval
     parser.add_argument(
         "--mode",
         type=str,
@@ -247,7 +240,6 @@ def parse_args():
         help="Run mode: train or eval only."
     )
 
-    # 可選：覆寫 seed
     parser.add_argument(
         "--seed",
         type=int,
@@ -255,7 +247,6 @@ def parse_args():
         help="Override seed in config (optional)."
     )
 
-    # 可選：指定 checkpoint path（eval 時會用到）
     parser.add_argument(
         "--checkpoint_path",
         type=str,
@@ -269,7 +260,6 @@ def main():
     args = parse_args()
     cfg = load_yaml(args.config)  
 
-    # 2) 可選：覆寫 seed
     if args.seed is not None:
         cfg["seed"] = args.seed
 

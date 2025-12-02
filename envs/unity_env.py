@@ -15,7 +15,6 @@ class UnityEnv(BaseEnv):
         self.decision_interval = decision_interval
         self._max_episode_steps = max_episode_steps
 
-        # 一開始的 agents 數量
         decision_steps, _ = self.env.get_steps(self.behavior_name)
         self.agent_ids = list(decision_steps.agent_id)
         self.num_agents = len(decision_steps)
@@ -23,7 +22,6 @@ class UnityEnv(BaseEnv):
 
         self.last_decision_agent_ids = list(decision_steps.agent_id)
 
-        # 觀測空間
         obs_dim = sum(int(np.prod(obs_spec.shape)) for obs_spec in self.spec.observation_specs)
         self.total_obs_dim = obs_dim
         self.observation_space = Box(
@@ -33,7 +31,6 @@ class UnityEnv(BaseEnv):
             dtype=np.float32,
         )
 
-        # 動作空間（假設只有連續動作）
         action_dim = self.spec.action_spec.continuous_size
         self.action_dim = action_dim
         self.action_space = Box(
@@ -77,7 +74,6 @@ class UnityEnv(BaseEnv):
         return obs, reward, done
 
     def reset(self):
-        # 整個 Unity 環境 reset（只在一開始或你想硬重來時用）
         self.env.reset()
         decision_steps, _ = self.env.get_steps(self.behavior_name)
 
@@ -96,23 +92,15 @@ class UnityEnv(BaseEnv):
 
 
     def step(self, action):
-        """
-        action: (num_agents, action_dim) 或 (action_dim,)
-        回傳:
-          next_obs: (num_agents, obs_dim)
-          reward:   (num_agents,)
-          done:     (num_agents,) bool，每隻狼自己的 done
-        """
         action = np.asarray(action, dtype=np.float32)
 
-        # 方便單 agent 使用：允許 (action_dim,) -> (1, action_dim)
         if action.shape == (self.action_dim,):
             action = action[np.newaxis, :]
         assert action.shape == (self.num_agents, self.action_dim), \
             f"Action shape {action.shape} != ({self.num_agents}, {self.action_dim})"
 
         n_req = len(self.last_decision_agent_ids)
-        # 把「固定 index 順序的 action」轉成「上一幀 decision_steps 的 agent 順序」
+
         action_to_send = np.zeros((len(self.last_decision_agent_ids), self.action_dim), dtype=np.float32)
         for i, agent_id in enumerate(self.last_decision_agent_ids):
             idx = self.id_to_index[agent_id]
