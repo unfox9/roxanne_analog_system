@@ -49,7 +49,6 @@ class SACAgent(Agent):
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
 
-        # 正確使用 DoubleQCritic / DiagGaussianActor
         self.critic = DoubleQCritic(
             obs_dim=obs_dim,
             action_dim=action_dim,
@@ -120,6 +119,7 @@ class SACAgent(Agent):
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
 
         self.critic.log(logger, step)
