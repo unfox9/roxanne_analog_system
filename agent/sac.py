@@ -70,7 +70,7 @@ class SACAgent(Agent):
         # temperature
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(self.device)
         self.log_alpha.requires_grad = True
-        self.target_entropy = -action_dim / 5
+        self.target_entropy = -1.0
 
         # optimizers
         self.actor_optimizer = torch.optim.Adam(
@@ -105,7 +105,7 @@ class SACAgent(Agent):
     def update_critic(self, obs, action, reward, next_obs, not_done, logger, step):
         dist = self.actor(next_obs)
         next_action = dist.rsample()
-        log_prob = dist.log_prob(next_action).sum(-1, keepdim=True)
+        log_prob = dist.log_prob(next_action).mean(-1, keepdim=True)
         target_Q1, target_Q2 = self.critic_target(next_obs, next_action)
         target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
         target_Q = reward + (not_done * self.discount * target_V)
@@ -118,7 +118,6 @@ class SACAgent(Agent):
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
 
         self.critic.log(logger, step)
@@ -126,7 +125,7 @@ class SACAgent(Agent):
     def update_actor_and_alpha(self, obs, logger, step):
         dist = self.actor(obs)
         action = dist.rsample()
-        log_prob = dist.log_prob(action).sum(-1, keepdim=True)
+        log_prob = dist.log_prob(action).mean(-1, keepdim=True)
         actor_Q1, actor_Q2 = self.critic(obs, action)
         actor_Q = torch.min(actor_Q1, actor_Q2)
 
@@ -137,7 +136,6 @@ class SACAgent(Agent):
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
         self.actor_optimizer.step()
 
         self.actor.log(logger, step)
