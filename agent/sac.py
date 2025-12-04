@@ -12,7 +12,6 @@ from agent.critic import DoubleQCritic
 
 
 class SACAgent(Agent):
-    """SAC algorithm without Hydra."""
     def __init__(
         self,
         obs_dim,
@@ -71,7 +70,7 @@ class SACAgent(Agent):
         # temperature
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(self.device)
         self.log_alpha.requires_grad = True
-        self.target_entropy = -action_dim
+        self.target_entropy = -action_dim / 5
 
         # optimizers
         self.actor_optimizer = torch.optim.Adam(
@@ -113,7 +112,7 @@ class SACAgent(Agent):
         target_Q = target_Q.detach()
 
         current_Q1, current_Q2 = self.critic(obs, action)
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+        critic_loss = F.smooth_l1_loss(current_Q1, target_Q) + F.smooth_l1_loss(current_Q2, target_Q)
 
         logger.log("train_critic/loss", critic_loss, step)
 
@@ -138,10 +137,11 @@ class SACAgent(Agent):
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
         self.actor_optimizer.step()
 
         self.actor.log(logger, step)
-
+        
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad()
             alpha_loss = (self.alpha * (-log_prob - self.target_entropy).detach()).mean()
@@ -149,7 +149,7 @@ class SACAgent(Agent):
             logger.log("train_alpha/value", self.alpha, step)
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
-
+        
     def update(self, replay_buffer, logger, step):
         (
             obs,
