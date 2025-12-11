@@ -11,6 +11,12 @@ executable_path:
 decision_interval: 1
 render: true
 
+# Motor control
+use_motor: true
+latent_action_dim: 8
+mapping_path: "action_mapping.txt"
+dt: 0.02
+
 # Save agent
 Save_Agent: true
 save_frequency: 100000

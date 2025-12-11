@@ -212,7 +212,7 @@ tb/
 **/events.out.tfevents.*
 
 # Checkpoints / weights
-checkpoints/
+checkpoint/
 *.pt
 *.pth
 *.ckpt

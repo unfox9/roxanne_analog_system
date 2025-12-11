@@ -34,11 +34,32 @@ def make_env(cfg):
         decision_interval = cfg.get("decision_interval", 1)
         render            = cfg.get("render", True)
 
-        env = UnityEnv(
+        base_env = UnityEnv(
             executable_path=executable_path,
             decision_interval=decision_interval,
             render=render,
         )
+
+        use_motor = cfg.get("use_motor", False)
+        if use_motor:
+            from envs.motor_env import MotorEnv
+            from motor.controller.motor_controller import MotorController
+            mapping_path = cfg.get("mapping_path", "action_mapping.txt")
+            latent_dim = cfg.get("latent_action_dim", 8)
+            dt = cfg.get("dt", 0.02)
+
+            def controller_factory():
+                return MotorController(mapping_path=mapping_path, dt=dt)
+
+            env = MotorEnv(
+                inner_env=base_env,
+                controller_factory=controller_factory,
+                latent_dim=latent_dim,
+                dt=dt,
+            )
+            
+        else:
+            env = base_env
     else:
         raise ValueError(f"unknown env: {suite}")
 
@@ -80,7 +101,7 @@ class Workspace(object):
         cfg["agent"]["device"] = cfg["device"]
 
         # instantiate agent manually
-        from agent.sac import SACAgent
+        from agent.sac.sac import SACAgent
         self.agent = SACAgent(**cfg["agent"])
 
         self.replay_buffer = ReplayBuffer(
@@ -217,7 +238,7 @@ class Workspace(object):
                     if ckpt_path is None:
                         ckpt_path = os.path.join(
                             self.work_dir, 
-                            "checkpoints",
+                            "checkpoint",
                             f"ckpt_{self.step}.pt"
                         )
                     utils.save_agent(self.agent, ckpt_path)

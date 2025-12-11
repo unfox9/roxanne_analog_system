@@ -7,8 +7,8 @@ import math
 from agent.agent import Agent
 import utils
 
-from agent.actor import DiagGaussianActor
-from agent.critic import DoubleQCritic
+from agent.sac.actor import DiagGaussianActor
+from agent.sac.critic import DoubleQCritic
 
 
 class SACAgent(Agent):

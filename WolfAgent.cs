@@ -533,4 +533,39 @@ public class WolfAgent : Agent
             a[i] = 0f;
         }
     }
+
+    [ContextMenu("Dump Action Mapping")]
+    void DumpActionMapping()
+    {
+        var sb = new StringBuilder();
+        int idx = 0;
+
+        sb.AppendLine("# index, bodyName, axis");
+        foreach (var jc in joints)
+        {
+            var body = jc.body;
+            if (body == null) continue;
+            string name = body.name;
+
+            if (jc.useXDrive)
+            {
+                sb.AppendLine($"{idx}, {name}, X");
+                idx++;
+            }
+            if (jc.useYDrive)
+            {
+                sb.AppendLine($"{idx}, {name}, Y");
+                idx++;
+            }
+            if (jc.useZDrive)
+            {
+                sb.AppendLine($"{idx}, {name}, Z");
+                idx++;
+            }
+        }
+
+        string path = Path.Combine(Application.dataPath, "../action_mapping.txt");
+        File.WriteAllText(path, sb.ToString());
+        Debug.Log($"[WolfAgent] Wrote action mapping with {idx} channels to: {path}");
+    }
 }
