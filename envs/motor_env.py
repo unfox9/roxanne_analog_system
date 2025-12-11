@@ -1,6 +1,7 @@
 import numpy as np
 from envs.base_env import BaseEnv, Box
 
+
 class MotorEnv(BaseEnv):
     def __init__(
         self,
@@ -9,12 +10,11 @@ class MotorEnv(BaseEnv):
         latent_dim=8,
         dt=0.02,
     ):
-        self.inner_env = inner_env  
+        self.inner_env = inner_env
         self.controller_factory = controller_factory
         self.dt = dt
         self.controllers = [
-            controller_factory()
-            for _ in range(self.inner_env.num_agents)
+            controller_factory() for _ in range(self.inner_env.num_agents)
         ]
         self.observation_space = self.inner_env.observation_space
         self.latent_dim = latent_dim
@@ -30,8 +30,7 @@ class MotorEnv(BaseEnv):
     def reset(self):
         obs = self.inner_env.reset()
         self.controllers = [
-            self.controller_factory()
-            for _ in range(self.inner_env.num_agents)
+            self.controller_factory() for _ in range(self.inner_env.num_agents)
         ]
         return obs
 
@@ -41,9 +40,10 @@ class MotorEnv(BaseEnv):
         if latent_action.shape == (self.latent_dim,):
             latent_action = latent_action[np.newaxis, :]
 
-        assert latent_action.shape[0] == self.inner_env.num_agents, \
-            f"latent_action num_agents {latent_action.shape[0]} " \
+        assert latent_action.shape[0] == self.inner_env.num_agents, (
+            f"latent_action num_agents {latent_action.shape[0]} "
             f"!= inner_env.num_agents {self.inner_env.num_agents}"
+        )
 
         full_actions = []
         for i in range(self.inner_env.num_agents):

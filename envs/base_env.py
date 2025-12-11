@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
+
 class Box:
     def __init__(self, low, high, shape, dtype=np.float32):
         self.shape = tuple(shape)
@@ -11,6 +12,7 @@ class Box:
 
     def sample(self):
         return np.random.uniform(self.low, self.high).astype(self.dtype)
+
 
 class BaseEnv(ABC):
     @abstractmethod

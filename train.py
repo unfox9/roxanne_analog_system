@@ -30,9 +30,9 @@ def make_env(cfg):
     if suite == "unity_env":
         from envs.unity_env import UnityEnv
 
-        executable_path   = cfg.get("executable_path",   "path/to/build.exe")
+        executable_path = cfg.get("executable_path", "path/to/build.exe")
         decision_interval = cfg.get("decision_interval", 1)
-        render            = cfg.get("render", True)
+        render = cfg.get("render", True)
 
         base_env = UnityEnv(
             executable_path=executable_path,
@@ -44,12 +44,15 @@ def make_env(cfg):
         if use_motor:
             from envs.motor_env import MotorEnv
             from motor.controller.motor_controller import MotorController
+
             mapping_path = cfg.get("mapping_path", "action_mapping.txt")
             latent_dim = cfg.get("latent_action_dim", 8)
             dt = cfg.get("dt", 0.02)
 
             def controller_factory():
-                return MotorController(mapping_path=mapping_path, dt=dt)
+                return MotorController(
+                    mapping_path=mapping_path, dt=dt, expected_dim=None
+                )
 
             env = MotorEnv(
                 inner_env=base_env,
@@ -57,7 +60,7 @@ def make_env(cfg):
                 latent_dim=latent_dim,
                 dt=dt,
             )
-            
+
         else:
             env = base_env
     else:
@@ -69,19 +72,19 @@ def make_env(cfg):
 class Workspace(object):
     def __init__(self, cfg):
         self.work_dir = os.getcwd()
-        print(f'workspace: {self.work_dir}')
+        print(f"workspace: {self.work_dir}")
 
         self.cfg = cfg
         self.device = torch.device(cfg["device"])
         self.step = 0
-        
+
         agent_name = cfg["agent"].get("name", "agent")
 
         self.logger = Logger(
             self.work_dir,
             save_tb=cfg["log_save_tb"],
             log_frequency=cfg["log_frequency"],
-            agent= agent_name
+            agent=agent_name,
         )
 
         utils.set_seed_everywhere(cfg["seed"])
@@ -102,17 +105,17 @@ class Workspace(object):
 
         # instantiate agent manually
         from agent.sac.sac import SACAgent
+
         self.agent = SACAgent(**cfg["agent"])
 
         self.replay_buffer = ReplayBuffer(
             self.env.observation_space.shape,
             self.env.action_space.shape,
             int(cfg["replay_buffer_capacity"]),
-            self.device
+            self.device,
         )
 
         self.checkpoint_path = cfg.get("checkpoint_path", None)
-
 
     def evaluate(self, checkpoint_path=None):
         if checkpoint_path is not None:
@@ -130,9 +133,9 @@ class Workspace(object):
                     actions = []
                     num_agents = obs.shape[0]
                     for i in range(num_agents):
-                        act = self.agent.act(obs[i], sample=False) 
+                        act = self.agent.act(obs[i], sample=False)
                         actions.append(act)
-                    action = np.stack(actions, axis=0).astype(np.float32)  
+                    action = np.stack(actions, axis=0).astype(np.float32)
 
                 obs, reward, done, _ = self.env.step(action)
                 ep_reward += float(np.mean(reward))
@@ -141,7 +144,7 @@ class Workspace(object):
             avg_reward += ep_reward
 
         avg_reward /= self.cfg["num_eval_episodes"]
-        self.logger.log('eval/episode_reward', avg_reward, self.step)
+        self.logger.log("eval/episode_reward", avg_reward, self.step)
         self.logger.dump(self.step)
 
     def run(self):
@@ -162,15 +165,15 @@ class Workspace(object):
                 action = np.random.uniform(
                     low=low,
                     high=high,
-                    size=(num_agents, self.cfg["agent"]["action_dim"])
+                    size=(num_agents, self.cfg["agent"]["action_dim"]),
                 ).astype(np.float32)
             else:
                 actions = []
                 with utils.eval_mode(self.agent):
                     for i in range(num_agents):
-                        act = self.agent.act(obs[i], sample=True) 
+                        act = self.agent.act(obs[i], sample=True)
                         actions.append(act)
-                action = np.stack(actions, axis=0).astype(np.float32) 
+                action = np.stack(actions, axis=0).astype(np.float32)
 
             # train
             if self.step >= self.cfg["num_seed_steps"]:
@@ -178,58 +181,53 @@ class Workspace(object):
 
             next_obs, reward, done, _ = self.env.step(action)
 
-            done = done.astype(np.float32)  
+            done = done.astype(np.float32)
             done_no_max = done.copy()
 
             for i in range(num_agents):
                 self.replay_buffer.add(
-                    obs[i], 
-                    action[i], 
-                    np.array([reward[i]], dtype=np.float32), 
-                    next_obs[i], 
-                    float(done[i]), 
+                    obs[i],
+                    action[i],
+                    np.array([reward[i]], dtype=np.float32),
+                    next_obs[i],
+                    float(done[i]),
                     float(done_no_max[i]),
-                    )
+                )
 
                 episode_reward[i] += reward[i]
                 episode_step[i] += 1
 
                 if done[i] > 0.5:
                     self.logger.log(
-                        'train/episode_reward', 
-                        episode_reward[i], 
-                        self.step
+                        "train/episode_reward", episode_reward[i], self.step
                     )
-                    self.logger.log(
-                        'train/episode_length', 
-                        episode_step[i], 
-                        self.step
-                    )
+                    self.logger.log("train/episode_length", episode_step[i], self.step)
 
                     episode += 1
                     episode_reward[i] = 0.0
-                    episode_step[i] = 0 
+                    episode_step[i] = 0
 
             obs = next_obs
             self.step += 1
 
             # ---- logging ----
             if self.step % self.cfg["log_frequency"] == 0:
-                self.logger.log('train/episode', episode, self.step)
-                self.logger.log('train/duration', time.time() - start, self.step)
+                self.logger.log("train/episode", episode, self.step)
+                self.logger.log("train/duration", time.time() - start, self.step)
                 start = time.time()
-                self.logger.dump(self.step, save=(self.step > self.cfg["num_seed_steps"]))
+                self.logger.dump(
+                    self.step, save=(self.step > self.cfg["num_seed_steps"])
+                )
 
             if self.step > 0 and self.step % self.cfg["eval_frequency"] == 0:
-                self.logger.log('eval/episode', episode, self.step)
+                self.logger.log("eval/episode", episode, self.step)
                 self.evaluate()
 
                 obs = self.env.reset()
                 num_agents = obs.shape[0]
                 episode_step[:] = 0
                 episode_reward[:] = 0.0
-       
-            
+
             # ---- checkpoint saving ----
             if self.cfg.get("Save_Agent", False):
                 save_freq = self.cfg.get("save_frequency", 100000)
@@ -237,11 +235,10 @@ class Workspace(object):
                     ckpt_path = self.checkpoint_path
                     if ckpt_path is None:
                         ckpt_path = os.path.join(
-                            self.work_dir, 
-                            "checkpoint",
-                            f"ckpt_{self.step}.pt"
+                            self.work_dir, "checkpoint", f"ckpt_{self.step}.pt"
                         )
                     utils.save_agent(self.agent, ckpt_path)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -250,7 +247,7 @@ def parse_args():
         "--config",
         type=str,
         default="configs/train.yaml",
-        help="Path to YAML config file."
+        help="Path to YAML config file.",
     )
 
     parser.add_argument(
@@ -258,28 +255,26 @@ def parse_args():
         type=str,
         default="train",
         choices=["train", "eval"],
-        help="Run mode: train or eval only."
+        help="Run mode: train or eval only.",
     )
 
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Override seed in config (optional)."
+        "--seed", type=int, default=None, help="Override seed in config (optional)."
     )
 
     parser.add_argument(
         "--checkpoint_path",
         type=str,
         default=None,
-        help="Path to agent checkpoint (for eval mode)."
+        help="Path to agent checkpoint (for eval mode).",
     )
 
     return parser.parse_args()
 
+
 def main():
     args = parse_args()
-    cfg = load_yaml(args.config)  
+    cfg = load_yaml(args.config)
 
     if args.seed is not None:
         cfg["seed"] = args.seed
@@ -299,5 +294,6 @@ def main():
     else:
         raise ValueError(f"Unknown mode: {args.mode}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

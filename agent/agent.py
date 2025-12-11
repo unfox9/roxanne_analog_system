@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class Agent(ABC):
     def reset(self):
         """For state-full agents this function performs reseting at the beginning of each episode."""

@@ -5,7 +5,13 @@ from envs.base_env import BaseEnv, Box
 
 
 class UnityEnv(BaseEnv):
-    def __init__(self, executable_path, decision_interval=5, render=True, max_episode_steps=5000,):
+    def __init__(
+        self,
+        executable_path,
+        decision_interval=5,
+        render=True,
+        max_episode_steps=5000,
+    ):
         file_name = executable_path
         self.env = UnityEnvironment(file_name=file_name, no_graphics=not render)
         self.env.reset()
@@ -18,11 +24,15 @@ class UnityEnv(BaseEnv):
         decision_steps, _ = self.env.get_steps(self.behavior_name)
         self.agent_ids = list(decision_steps.agent_id)
         self.num_agents = len(decision_steps)
-        self.id_to_index = {agent_id: index for index, agent_id in enumerate(self.agent_ids)}
+        self.id_to_index = {
+            agent_id: index for index, agent_id in enumerate(self.agent_ids)
+        }
 
         self.last_decision_agent_ids = list(decision_steps.agent_id)
 
-        obs_dim = sum(int(np.prod(obs_spec.shape)) for obs_spec in self.spec.observation_specs)
+        obs_dim = sum(
+            int(np.prod(obs_spec.shape)) for obs_spec in self.spec.observation_specs
+        )
         self.total_obs_dim = obs_dim
         self.observation_space = Box(
             low=-np.inf,
@@ -45,7 +55,6 @@ class UnityEnv(BaseEnv):
         reward = np.zeros((self.num_agents,), dtype=np.float32)
         done = np.zeros((self.num_agents,), dtype=bool)
 
-
         def fill_from_steps(steps, is_termial: bool):
             for step_idx, agent_id in enumerate(steps.agent_id):
                 agent_id_int = int(agent_id)
@@ -53,10 +62,12 @@ class UnityEnv(BaseEnv):
                 if agent_id_int not in self.id_to_index:
                     new_idx = len(self.id_to_index)
                     if new_idx >= self.num_agents:
-                        raise ValueError("New agent appeared beyond initial num_agents.")
-                    
+                        raise ValueError(
+                            "New agent appeared beyond initial num_agents."
+                        )
+
                     self.id_to_index[agent_id_int] = new_idx
-                
+
                 idx = self.id_to_index[agent_id_int]
 
                 per_agent_obs = []
@@ -70,7 +81,7 @@ class UnityEnv(BaseEnv):
 
         fill_from_steps(decision_steps, is_termial=False)
         fill_from_steps(terminal_steps, is_termial=True)
-                
+
         return obs, reward, done
 
     def reset(self):
@@ -79,7 +90,9 @@ class UnityEnv(BaseEnv):
 
         self.agent_ids = list(decision_steps.agent_id)
         self.num_agents = len(decision_steps)
-        self.id_to_index = {agent_id: idx for idx, agent_id in enumerate(self.agent_ids)}
+        self.id_to_index = {
+            agent_id: idx for idx, agent_id in enumerate(self.agent_ids)
+        }
         self.last_decision_agent_ids = list(decision_steps.agent_id)
 
         obs = np.zeros((self.num_agents, self.total_obs_dim), dtype=np.float32)
@@ -90,18 +103,21 @@ class UnityEnv(BaseEnv):
 
         return obs
 
-
     def step(self, action):
         action = np.asarray(action, dtype=np.float32)
 
         if action.shape == (self.action_dim,):
             action = action[np.newaxis, :]
-        assert action.shape == (self.num_agents, self.action_dim), \
-            f"Action shape {action.shape} != ({self.num_agents}, {self.action_dim})"
+        assert action.shape == (
+            self.num_agents,
+            self.action_dim,
+        ), f"Action shape {action.shape} != ({self.num_agents}, {self.action_dim})"
 
         n_req = len(self.last_decision_agent_ids)
 
-        action_to_send = np.zeros((len(self.last_decision_agent_ids), self.action_dim), dtype=np.float32)
+        action_to_send = np.zeros(
+            (len(self.last_decision_agent_ids), self.action_dim), dtype=np.float32
+        )
         for i, agent_id in enumerate(self.last_decision_agent_ids):
             idx = self.id_to_index[agent_id]
             action_to_send[i] = action[idx]
@@ -112,12 +128,13 @@ class UnityEnv(BaseEnv):
 
         decision_steps, terminal_steps = self.env.get_steps(self.behavior_name)
 
-        next_obs, reward, done = self._build_obs_reward_done(decision_steps, terminal_steps)
+        next_obs, reward, done = self._build_obs_reward_done(
+            decision_steps, terminal_steps
+        )
 
         self.last_decision_agent_ids = list(decision_steps.agent_id)
 
         return next_obs, reward, done, {}
-
 
     def close(self):
         self.env.close()

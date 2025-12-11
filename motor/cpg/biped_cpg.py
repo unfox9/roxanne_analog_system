@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class HopfOscillator:
     def __init__(self, alpha=20.0, mu=1.0, omega=2.0, dt=0.02):
         """
@@ -47,6 +48,7 @@ class BipedCPG:
     - right: 右腿（相位反轉）
     同時輸出 spine_amp / tail_amp，供 decoder 使用。
     """
+
     def __init__(self, dt: float = 0.02, base_omega: float = 2.0):
         self.dt = dt
         self.left = HopfOscillator(omega=base_omega, dt=dt)
@@ -71,8 +73,11 @@ class BipedCPG:
         modulation = np.clip(modulation, -1.0, 1.0)
 
         freq_scale = 1.0 + 0.5 * float(modulation[0])
-        spine_amp = 0.3 + 0.7 * (float(modulation[2]) * 0.5 + 0.5)
-        tail_amp = 0.3 + 0.7 * (float(modulation[3]) * 0.5 + 0.5)
+
+        amp = 0.5 * (float(modulation[1]) + 1.0)
+
+        spine_amp = amp * (0.3 + 0.7 * (float(modulation[2]) * 0.5 + 0.5))
+        tail_amp = amp * (0.3 + 0.7 * (float(modulation[3]) * 0.5 + 0.5))
         turn_input = float(modulation[4])
 
         # 轉彎時：內側腿慢一點，外側快一點
@@ -91,8 +96,11 @@ class BipedCPG:
         l_mod = (l_scale - 1.0) * self.left.omega
         r_mod = (r_scale - 1.0) * self.right.omega
 
-        left_wave = self.left.step(omega_mod=l_mod)
-        right_wave = self.right.step(omega_mod=r_mod)
+        left_raw = self.left.step(omega_mod=l_mod)
+        right_raw = self.right.step(omega_mod=r_mod)
+
+        left_wave = amp * left_raw
+        right_wave = amp * right_raw
 
         return {
             "left": left_wave,

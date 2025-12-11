@@ -1,0 +1,82 @@
+# index, bodyName, axis
+0, Left leg, X
+1, Left leg, Y
+2, Left leg, Z
+3, Right leg, X
+4, Right leg, Y
+5, Right leg, Z
+6, Left knee, X
+7, Right knee, X
+8, Left ankle, X
+9, Right ankle, X
+10, Spine, X
+11, Spine, Y
+12, Spine, Z
+13, Chest, X
+14, Chest, Y
+15, Chest, Z
+16, Upper Chest, X
+17, Upper Chest, Y
+18, Upper Chest, Z
+19, Neck, X
+20, Neck, Y
+21, Neck, Z
+22, Head, X
+23, Head, Y
+24, Head, Z
+25, Toes_Index1_L, X
+26, Toes_Middle1_L, X
+27, Toes_Pinky1_L, X
+28, Toes_Ring1_L, X
+29, Toes_Index1_R, X
+30, Toes_Middle1_R, X
+31, Toes_Pinky1_R, X
+32, Toes_Ring1_R, X
+33, Right arm, X
+34, Right arm, Y
+35, Right arm, Z
+36, Left arm, X
+37, Left arm, Y
+38, Left arm, Z
+39, Left elbow, X
+40, Right elbow, X
+41, Left wrist, X
+42, Left wrist, Y
+43, Left wrist, Z
+44, Right wrist, X
+45, Right wrist, Y
+46, Right wrist, Z
+47, Tail_00_X, X
+48, Tail_00_X, Y
+49, Tail_01_X, X
+50, Tail_01_X, Y
+51, Tail_02_X, X
+52, Tail_02_X, Y
+53, Tail_03_X, X
+54, Tail_03_X, Y
+55, IndexFinger1_L, X
+56, IndexFinger1_R, X
+57, IndexFinger2_L, X
+58, IndexFinger2_R, X
+59, LittleFinger1_L, X
+60, LittleFinger1_R, X
+61, LittleFinger2_L, X
+62, LittleFinger2_R, X
+63, MiddleFinger1_L, X
+64, MiddleFinger1_R, X
+65, MiddleFinger2_L, X
+66, MiddleFinger2_R, X
+67, RingFinger1_L, X
+68, RingFinger1_R, X
+69, RingFinger2_L, X
+70, RingFinger2_R, X
+71, Thumb2_L, X
+72, Thumb2_R, X
+73, Thumb3_Rot_L, X
+74, Thumb3_Rot_R, X
+75, Ear_01_L, X
+76, Ear_01_L, Y
+77, Ear_01_L, Z
+78, Ear_01_R, X
+79, Ear_01_R, Y
+80, Ear_01_R, Z

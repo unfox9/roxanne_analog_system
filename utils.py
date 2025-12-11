@@ -8,6 +8,7 @@ from collections import deque
 import random
 import math
 
+
 class eval_mode(object):
     def __init__(self, *models):
         self.models = models
@@ -42,8 +43,8 @@ class train_mode(object):
 
 def soft_update_params(net, target_net, tau):
     for param, target_param in zip(net.parameters(), target_net.parameters()):
-        target_param.data.copy_(tau * param.data +
-                                (1 - tau) * target_param.data)
+        target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
+
 
 def set_seed_everywhere(seed):
     torch.manual_seed(seed)
@@ -51,6 +52,7 @@ def set_seed_everywhere(seed):
         torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
 
 def make_dir(*path_parts):
     dir_path = os.path.join(*path_parts)
@@ -60,27 +62,26 @@ def make_dir(*path_parts):
         pass
     return dir_path
 
+
 def weight_init(m):
     """Custom weight init for Conv2D and Linear layers."""
     if isinstance(m, nn.Linear):
         nn.init.orthogonal_(m.weight.data)
-        if hasattr(m.bias, 'data'):
+        if hasattr(m.bias, "data"):
             m.bias.data.fill_(0.0)
 
+
 class MLP(nn.Module):
-    def __init__(self,
-                 input_dim,
-                 hidden_dim,
-                 output_dim,
-                 hidden_depth,
-                 output_mod=None):
+    def __init__(
+        self, input_dim, hidden_dim, output_dim, hidden_depth, output_mod=None
+    ):
         super().__init__()
-        self.trunk = mlp(input_dim, hidden_dim, output_dim, hidden_depth,
-                         output_mod)
+        self.trunk = mlp(input_dim, hidden_dim, output_dim, hidden_depth, output_mod)
         self.apply(weight_init)
 
     def forward(self, x):
         return self.trunk(x)
+
 
 def mlp(input_dim, hidden_dim, output_dim, hidden_depth, output_mod=None):
     if hidden_depth == 0:
@@ -95,6 +96,7 @@ def mlp(input_dim, hidden_dim, output_dim, hidden_depth, output_mod=None):
     trunk = nn.Sequential(*mods)
     return trunk
 
+
 def to_np(t):
     if t is None:
         return None
@@ -102,7 +104,8 @@ def to_np(t):
         return np.array([])
     else:
         return t.cpu().detach().numpy()
-    
+
+
 def save_agent(agent, path: str):
     dir_path = os.path.dirname(path)
     if dir_path != "":

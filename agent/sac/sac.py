@@ -33,7 +33,7 @@ class SACAgent(Agent):
         critic_target_update_frequency,
         batch_size,
         learnable_temperature,
-        name = "sac",
+        name="sac",
         **kwargs
     ):
         super().__init__()
@@ -112,7 +112,9 @@ class SACAgent(Agent):
         target_Q = target_Q.detach()
 
         current_Q1, current_Q2 = self.critic(obs, action)
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(
+            current_Q2, target_Q
+        )
 
         logger.log("train_critic/loss", critic_loss, step)
 
@@ -139,15 +141,17 @@ class SACAgent(Agent):
         self.actor_optimizer.step()
 
         self.actor.log(logger, step)
-        
+
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad()
-            alpha_loss = (self.alpha * (-log_prob - self.target_entropy).detach()).mean()
+            alpha_loss = (
+                self.alpha * (-log_prob - self.target_entropy).detach()
+            ).mean()
             logger.log("train_alpha/loss", alpha_loss, step)
             logger.log("train_alpha/value", self.alpha, step)
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
-        
+
     def update(self, replay_buffer, logger, step):
         (
             obs,

@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class JointMapper:
     def __init__(self, channels):
         self.channels = channels
@@ -8,11 +9,14 @@ class JointMapper:
         self.left_leg = [c for c in channels if "Left leg" in c["name"]]
         self.right_leg = [c for c in channels if "Right leg" in c["name"]]
 
-        self.spine = [c for c in channels if "Spine" in c["name"] or "Chest" in c["name"]]
+        self.spine = [
+            c for c in channels if "Spine" in c["name"] or "Chest" in c["name"]
+        ]
         self.tail = [c for c in channels if "Tail_" in c["name"]]
 
         self.extra = [
-            c for c in channels
+            c
+            for c in channels
             if c not in self.left_leg
             and c not in self.right_leg
             and c not in self.spine

@@ -1,5 +1,6 @@
 import re
 
+
 def load_action_channels(path):
     channels = []
     with open(path, "r", encoding="utf-8") as f:
