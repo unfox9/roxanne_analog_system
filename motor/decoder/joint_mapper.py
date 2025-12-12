@@ -1,27 +1,19 @@
 import numpy as np
+from motor.schema.action_schema import ActionSchema
 
 
 class JointMapper:
-    def __init__(self, channels):
-        self.channels = channels
-        self.action_dim = len(channels)
+    def __init__(self, schema: ActionSchema):
+        self.schema = schema
+        self.channels = schema.channels
+        self.action_dim = schema.action_dim
 
-        self.left_leg = [c for c in channels if "Left leg" in c["name"]]
-        self.right_leg = [c for c in channels if "Right leg" in c["name"]]
-
-        self.spine = [
-            c for c in channels if "Spine" in c["name"] or "Chest" in c["name"]
-        ]
-        self.tail = [c for c in channels if "Tail_" in c["name"]]
-
-        self.extra = [
-            c
-            for c in channels
-            if c not in self.left_leg
-            and c not in self.right_leg
-            and c not in self.spine
-            and c not in self.tail
-        ]
+        # 直接用 schema.groups（集中管理）
+        self.left_leg = schema.groups["left_leg"]
+        self.right_leg = schema.groups["right_leg"]
+        self.spine = schema.groups["spine"]
+        self.tail = schema.groups["tail"]
+        self.extra = schema.groups["extra"]
 
     def decode(self, cpg_state) -> np.ndarray:
         out = np.zeros(self.action_dim, dtype=np.float32)

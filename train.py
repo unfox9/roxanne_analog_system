@@ -43,7 +43,7 @@ def make_env(cfg):
         use_motor = cfg.get("use_motor", False)
         if use_motor:
             from envs.motor_env import MotorEnv
-            from motor.controller.motor_controller import MotorController
+            from motor.controller.motor_core import MotorController
 
             mapping_path = cfg.get("mapping_path", "action_mapping.txt")
             latent_dim = cfg.get("latent_action_dim", 8)
