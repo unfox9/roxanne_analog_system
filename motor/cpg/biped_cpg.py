@@ -1,82 +1,138 @@
+from __future__ import annotations
 import numpy as np
 
+from motor.cpg.hopf import HopfOscillator, wrap_pi
+from motor.cpg.wave_shaper import sigmoid01, clip, duty_wave
 
-class HopfOscillator:
-    def __init__(self, alpha=20.0, mu=1.0, omega=2.0, dt=0.02):
-        self.alpha = alpha
-        self.mu = mu
-        self.omega = omega
-        self.dt = dt
-        self.x = 1.0
-        self.y = 0.0
 
-    def reset(self, phase: float = 0.0):
-        self.x = np.cos(phase)
-        self.y = np.sin(phase)
+class BalanceReflex:
+    def __init__(self, kp_pitch=1.0, kd_pitch=0.2, kp_roll=1.0, kd_roll=0.2, clip=1.0):
+        self.kp_pitch = kp_pitch
+        self.kd_pitch = kd_pitch
+        self.kp_roll = kp_roll
+        self.kd_roll = kd_roll
+        self.clip = clip
 
-    @property
-    def phase(self) -> float:
-        return float(np.arctan2(self.y, self.x))
+    def __call__(self, reflex: np.ndarray, gain: float):
+        pitch = float(reflex[0])
+        roll = float(reflex[1])
+        pitch_rate = float(reflex[2])
+        roll_rate = float(reflex[3])
 
-    def step(self, omega_mod: float = 0.0) -> float:
-        omega = self.omega + omega_mod
-        r2 = self.x * self.x + self.y * self.y
+        posture = -(self.kp_pitch * pitch + self.kd_pitch * pitch_rate)
+        rollcmd = -(self.kp_roll * roll + self.kd_roll * roll_rate)
 
-        dx = self.alpha * (self.mu - r2) * self.x - omega * self.y
-        dy = self.alpha * (self.mu - r2) * self.y + omega * self.x
-
-        self.x += dx * self.dt
-        self.y += dy * self.dt
-
-        return float(self.x)
+        posture = np.clip(gain * posture, -self.clip, self.clip)
+        rollcmd = np.clip(gain * rollcmd, -self.clip, self.clip)
+        return float(posture), float(rollcmd)
 
 
 class BipedCPG:
-    def __init__(self, dt: float = 0.02, base_omega: float = 2.0):
-        self.dt = dt
-        self.left = HopfOscillator(omega=base_omega, dt=dt)
-        self.right = HopfOscillator(omega=base_omega, dt=dt)
+    def __init__(
+        self,
+        dt: float = 0.02,
+        base_omega: float = 2.0,
+        alpha: float = 20.0,
+        mu: float = 1.0,
+        turn_strength: float = 0.35,
+        phase_lock_k: float = 2.0,
+        freeze_amp_threshold: float = 0.02,
+        enable_phase_lock: bool = True,
+        param_dim: int = 8,
+    ):
+        self.dt = float(dt)
+        self.base_omega = float(base_omega)
+        self.turn_strength = float(turn_strength)
+
+        self.phase_lock_k = float(phase_lock_k)
+        self.freeze_amp_threshold = float(freeze_amp_threshold)
+        self.enable_phase_lock = bool(enable_phase_lock)
+
+        self.left = HopfOscillator(dt=dt, alpha=alpha, mu=mu, init_phase=0.0)
+        self.right = HopfOscillator(dt=dt, alpha=alpha, mu=mu, init_phase=np.pi)
+
+        self.param_dim = int(param_dim)
+
+        self.balance = BalanceReflex()
 
     def reset(self):
-        self.left.reset(0.0)
-        self.right.reset(np.pi) 
+        self.left.reset(phase=0.0)
+        self.right.reset(phase=np.pi)
 
-    def step(self, modulation: np.ndarray) -> dict:
-        modulation = np.asarray(modulation, dtype=np.float32)
-        modulation = np.clip(modulation, -1.0, 1.0)
+    def step(self, modulation: np.ndarray, reflex: np.ndarray | None = None) -> dict:
+        m = np.asarray(modulation, dtype=np.float32).reshape(-1)
+        if m.shape[0] < self.param_dim:
+            raise ValueError(
+                f"modulation must have dim {self.param_dim}, got {m.shape[0]}"
+            )
+        m = np.clip(m, -1.0, 1.0)
 
-        freq_scale = 1.0 + 0.5 * float(modulation[0])
+        freq_scale = 1.0 + 0.5 * float(m[0])
+        amp = sigmoid01(float(m[1]))
 
-        amp = 0.5 * (float(modulation[1]) + 1.0)
+        duty = 0.3 + 0.4 * sigmoid01(float(m[2]))
+        sharp = sigmoid01(float(m[3]))
+        turn = clip(float(m[4]), -1.0, 1.0)
 
-        spine_amp = amp * (0.3 + 0.7 * (float(modulation[2]) * 0.5 + 0.5))
-        tail_amp = amp * (0.3 + 0.7 * (float(modulation[3]) * 0.5 + 0.5))
-        turn_input = float(modulation[4])
+        spine_amp = amp * sigmoid01(float(m[5]))
+        tail_amp = amp * sigmoid01(float(m[6]))
 
-        turn_inner = 1.0 - 0.3 * abs(turn_input)
-        turn_outer = 1.0 + 0.3 * abs(turn_input)
+        omega = self.base_omega * freq_scale
+        domega = self.turn_strength * turn * omega
+        omega_L = max(0.0, omega - domega)
+        omega_R = max(0.0, omega + domega)
 
-        if turn_input >= 0.0:
-            l_scale = freq_scale * turn_inner
-            r_scale = freq_scale * turn_outer
-        else:
-            l_scale = freq_scale * turn_outer
-            r_scale = freq_scale * turn_inner
+        freeze = amp < self.freeze_amp_threshold
 
-        l_mod = (l_scale - 1.0) * self.left.omega
-        r_mod = (r_scale - 1.0) * self.right.omega
+        _ = self.left.step(omega=omega_L, freeze=freeze)
+        _ = self.right.step(omega=omega_R, freeze=freeze)
 
-        left_raw = self.left.step(omega_mod=l_mod)
-        right_raw = self.right.step(omega_mod=r_mod)
+        if self.enable_phase_lock and (not freeze):
+            phiL = self.left.phase
+            phiR = self.right.phase
+            err = wrap_pi((phiR - phiL) - np.pi)
+            self.left.reset(
+                phase=phiL + 0.5 * self.phase_lock_k * err * self.dt,
+                radius=self.left.radius,
+            )
+            self.right.reset(
+                phase=phiR - 0.5 * self.phase_lock_k * err * self.dt,
+                radius=self.right.radius,
+            )
 
-        left_wave = amp * left_raw
-        right_wave = amp * right_raw
+        phiL = self.left.phase
+        phiR = self.right.phase
+
+        left_raw = duty_wave(phiL, duty=duty, sharp=sharp)
+        right_raw = duty_wave(phiR, duty=duty, sharp=sharp)
+
+        left = float(amp * left_raw)
+        right = float(amp * right_raw)
+
+        balance_gain = 0.5 * (float(m[7]) + 1.0)
+        posture = 0.0
+        rollcmd = 0.0
+        if reflex is not None and len(reflex) >= 4:
+            posture, rollcmd = self.balance(reflex, gain=balance_gain)
 
         return {
-            "left": left_wave,
-            "right": right_wave,
-            "left_phase": self.left.phase,
-            "right_phase": self.right.phase,
-            "spine_amp": spine_amp,
-            "tail_amp": tail_amp,
+            "left": left,
+            "right": right,
+            "left_phase": float(phiL),
+            "right_phase": float(phiR),
+            "spine_amp": float(spine_amp),
+            "tail_amp": float(tail_amp),
+            "balance_gain": balance_gain,
+            "left_sin": float(np.sin(phiL)),
+            "left_cos": float(np.cos(phiL)),
+            "right_sin": float(np.sin(phiR)),
+            "right_cos": float(np.cos(phiR)),
+            "duty": float(duty),
+            "sharp": float(sharp),
+            "amp": float(amp),
+            "freq_scale": float(freq_scale),
+            "turn": float(turn),
+            "balance_gain": float(balance_gain),
+            "posture": posture,
+            "rollcmd": rollcmd,
         }

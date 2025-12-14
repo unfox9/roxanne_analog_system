@@ -26,9 +26,11 @@ class MotorEnv(BaseEnv):
         )
         self.num_agents = self.inner_env.num_agents
         self._max_episode_steps = self.inner_env._max_episode_steps
+        self._last_obs = None
 
     def reset(self):
         obs = self.inner_env.reset()
+        self._last_obs = obs
         self.controllers = [
             self.controller_factory() for _ in range(self.inner_env.num_agents)
         ]
@@ -36,7 +38,6 @@ class MotorEnv(BaseEnv):
 
     def step(self, latent_action):
         latent_action = np.asarray(latent_action, dtype=np.float32)
-
         if latent_action.shape == (self.latent_dim,):
             latent_action = latent_action[np.newaxis, :]
 
@@ -45,14 +46,16 @@ class MotorEnv(BaseEnv):
             f"!= inner_env.num_agents {self.inner_env.num_agents}"
         )
 
+        obs = self._last_obs
         full_actions = []
         for i in range(self.inner_env.num_agents):
-            a_full = self.controllers[i].step(latent_action[i])
+            a_full = self.controllers[i].step(latent_action[i], obs=obs[i])
             full_actions.append(a_full)
 
         full_actions = np.stack(full_actions, axis=0).astype(np.float32)
-
         next_obs, reward, done, info = self.inner_env.step(full_actions)
+
+        self._last_obs = next_obs
         return next_obs, reward, done, info
 
     def close(self):

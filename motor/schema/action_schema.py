@@ -1,41 +1,103 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Pattern, Sequence, Tuple
+import re
+from collections import defaultdict
 
 
-@dataclass
+def _sep(word: str) -> str:
+    return rf"(?:^|[_\s]){word}(?:$|[_\s])"
+
+
+@dataclass(frozen=True)
+class GroupRule:
+    part: str
+    pattern: str
+    midline: bool = False
+    axis: Optional[str] = None
+
+    def compile(self) -> Pattern[str]:
+        return re.compile(self.pattern, re.IGNORECASE)
+
+
+DEFAULT_RULES: List[GroupRule] = [
+    GroupRule("eye", r"(eye|eyeball|iris|pupil|eyelid|blink|gaze)"),
+    GroupRule("mouth", r"(jaw|mouth|lip|tongue|teeth|smile|frown|cheek)", midline=True),
+    GroupRule("ear", _sep("ear")),
+    GroupRule("finger", r"(finger|thumb)"),
+    GroupRule("toe", _sep("toes")),
+    GroupRule("wrist", _sep("wrist")),
+    GroupRule("elbow", _sep("elbow")),
+    GroupRule("arm", rf"{_sep('arm')}|shoulder|scapul|clavic"),
+    GroupRule("ankle", rf"{_sep('ankle')}|hock"),
+    GroupRule("knee", _sep("knee")),
+    GroupRule("leg", rf"{_sep('leg')}|hip|thigh"),
+    GroupRule("tail", r"^tail_|(?:^|[_\s])tail(?:$|[_\s])", midline=True),
+    GroupRule(
+        "spine", rf"{_sep('spine')}|{_sep('chest')}|waist|upper\s+chest", midline=True
+    ),
+    GroupRule("neck", _sep("neck"), midline=True),
+    GroupRule("head", _sep("head"), midline=True),
+]
+
+
 class ActionSchema:
-    """
-    負責：
-    - 讀 action_mapping.txt -> channels(list[dict])
-    - 定義 action_dim（用 max_index+1，比 len(channels) 穩）
-    - 做最基本的 group 分類（先沿用你 JointMapper 的規則）
-    """
-    channels: List[dict]
-    action_dim: int
-    groups: Dict[str, List[dict]]
+    def __init__(
+        self,
+        channels: list[Dict],
+        rules: Sequence[GroupRule] = DEFAULT_RULES,
+        strict_contiguous: bool = True,
+    ):
+        self.rules: List[Tuple[GroupRule, Pattern[str]]] = [
+            (r, r.compile()) for r in rules
+        ]
 
-    @staticmethod
-    def _infer_group(name: str) -> str:
-        # 先照你原本 JointMapper 的分類邏輯 :contentReference[oaicite:3]{index=3}
-        if "Left leg" in name:
-            return "left_leg"
-        if "Right leg" in name:
-            return "right_leg"
-        if ("Spine" in name) or ("Chest" in name):
-            return "spine"
-        if "Tail_" in name:
-            return "tail"
-        return "extra"
+        channels = sorted(channels, key=lambda c: int(c["index"]))
+        self.channels: List[Dict] = channels
+        self.action_dim: int = (
+            (max(int(c["index"]) for c in channels) + 1) if channels else 0
+        )
+
+        if strict_contiguous:
+            expected = list(range(self.action_dim))
+            got = [int(c["index"]) for c in channels]
+            if got != expected:
+                raise ValueError(
+                    f"Non-contiguous / non-0-based mapping indices.\n"
+                    f"expected: {expected[:10]}...{expected[-10:]}\n"
+                    f"got     : {got[:10]}...{got[-10:]}"
+                )
+
+        self.groups: Dict[str, List[Dict]] = defaultdict(list)
+        for c in self.channels:
+            name = str(c["name"])
+            axis = str(c["axis"]).upper()
+
+            side = self._detect_side(name)
+            part = self._match_part(name=name, axis=axis)
+            group = self._make_group(
+                part=part, side=side, midline=self._is_midline(part)
+            )
+
+            c["side"] = side
+            c["part"] = part
+            c["group"] = group
+            c["tags"] = self._make_tags(part=part, side=side, axis=axis)
+
+            self.groups[group].append(c)
+
+        if "extra" not in self.groups:
+            self.groups["extra"] = []
 
     @classmethod
     def from_mapping_file(
         cls,
         path: str,
-        expected_dim: Optional[int] = None,
+        rules: Sequence[GroupRule] = DEFAULT_RULES,
         strict_contiguous: bool = True,
     ) -> "ActionSchema":
-        channels: List[dict] = []
+        channels: List[Dict] = []
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -47,44 +109,50 @@ class ActionSchema:
                 idx = int(parts[0])
                 name = parts[1]
                 axis = parts[2].upper()
-                if axis not in ("X", "Y", "Z"):
-                    # 先保守跳過，避免怪資料把 schema 弄壞
-                    continue
                 channels.append({"index": idx, "name": name, "axis": axis})
+        return cls(channels=channels, rules=rules, strict_contiguous=strict_contiguous)
 
-        channels.sort(key=lambda c: c["index"])
-        if not channels:
-            raise ValueError(f"No channels parsed from mapping file: {path}")
+    def _detect_side(self, name: str) -> Optional[str]:
+        if re.search(r"\bleft\b", name, flags=re.IGNORECASE) or re.search(
+            r"(?:^|_)L(?:$|_)", name
+        ):
+            return "l"
+        if re.search(r"\bright\b", name, flags=re.IGNORECASE) or re.search(
+            r"(?:^|_)R(?:$|_)", name
+        ):
+            return "r"
+        return None
 
-        # action_dim 用 max_index+1，比 len(channels) 更穩（避免中間缺 index 時爆炸）
-        max_idx = max(c["index"] for c in channels)
-        action_dim = int(max_idx) + 1
+    def _match_part(self, name: str, axis: str) -> str:
+        for rule, cre in self.rules:
+            if rule.axis is not None and rule.axis.upper() != axis:
+                continue
+            if cre.search(name):
+                return rule.part
+        return "extra"
 
-        # 驗證 index
-        indices = [c["index"] for c in channels]
-        if len(set(indices)) != len(indices):
-            raise ValueError("Duplicate indices found in action mapping file.")
+    def _is_midline(self, part: str) -> bool:
+        return part in {"spine", "tail", "neck", "head", "mouth"}
 
-        if strict_contiguous:
-            # 期望 0..max_idx 全都存在
-            expected = set(range(action_dim))
-            missing = sorted(list(expected - set(indices)))
-            if missing:
-                raise ValueError(f"Action mapping indices not contiguous, missing: {missing[:20]} ...")
+    def _make_group(self, part: str, side: Optional[str], midline: bool) -> str:
+        if part == "extra":
+            return "extra"
+        if midline or side is None:
+            return part
+        return f"{part}_{side}"
 
-        if expected_dim is not None and action_dim != int(expected_dim):
-            raise ValueError(f"mapping action_dim({action_dim}) != expected_dim({expected_dim})")
+    def _make_tags(self, part: str, side: Optional[str], axis: str) -> List[str]:
+        tags = [part, f"axis_{axis.lower()}"]
+        if side in ("l", "r"):
+            tags.append(f"side_{side}")
+        return tags
 
-        # 分組
-        groups: Dict[str, List[dict]] = {
-            "left_leg": [],
-            "right_leg": [],
-            "spine": [],
-            "tail": [],
-            "extra": [],
-        }
-        for c in channels:
-            g = cls._infer_group(c["name"])
-            groups[g].append(c)
+    def get(self, group: str) -> List[Dict]:
+        return self.groups.get(group, [])
 
-        return cls(channels=channels, action_dim=action_dim, groups=groups)
+    def summary(self) -> str:
+        keys = sorted(self.groups.keys())
+        lines = [f"action_dim={self.action_dim}"]
+        for k in keys:
+            lines.append(f"{k:10s}: {len(self.groups[k])}")
+        return "\n".join(lines)
