@@ -1,63 +1,74 @@
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-
-class LIFlayer(nn.Module):
-    def __init__(self, input_size, output_size, decay=0.9, threshold=1.0, trace_decay=0.95):
+class IzhikevichLayer(nn.Module):
+    def __init__(self, input_size, output_size, a=0.02, b=0.2, c=-65.0, d=8.0):
         super().__init__()
+        # 突觸連接 (Linear Layer)
         self.synapse = nn.Linear(input_size, output_size, bias=False)
-
-        self.decay = decay
-        self.threshold = threshold
-        self.trace_decay = trace_decay
-
-        self.v = None 
-        self.trace = None
-
+        
+        # Izhikevich 參數 (可以是單一數值，也可以是向量以支援不同神經元)
+        self.a = a
+        self.b = b
+        self.c = c
+        self.d = d
+        
+        # 狀態變數
+        self.v = None # 膜電位
+        self.u = None # 恢復變數 (Recovery Variable)
+        self.trace = None # 資格跡 (給 Three-factor 用)
+        
+        # 記錄脈衝
         self.pre_spike = None
         self.post_spike = None
+        
+        # Trace 的衰減率
+        self.trace_decay = 0.95
 
-    def reset_state(self):
-        self.v = None
-        self.trace = None
+    def reset_state(self, batch_size, device):
+        # 初始化 v 為 -65mV (靜止電位), u 為 b*v
+        self.v = torch.ones(batch_size, self.synapse.out_features).to(device) * -65.0
+        self.u = self.v * self.b
+        self.trace = torch.zeros_like(self.v)
 
     def forward(self, x):
+        # 1. 計算輸入電流 I (來自突觸權重)
+        # x 是上一層的 Spikes (0 或 1)
         self.pre_spike = x.detach()
-
-        I_t = self.synapse(x)
+        I = self.synapse(x)
         
-        if self.v is None or self.v.shape != I_t.shape:
-            self.v = torch.zeros_like(I_t).to(I_t.device)
-            self.trace = torch.zeros_like(I_t).to(I_t.device)
-
-        self.v = self.decay * self.v + I_t
-
-        self.post_spike = (self.v >= self.threshold).float()
-
-        self.v = self.v * (1.0 - self.post_spike)
-
-        self.trace = self.trace_decay * self.trace + self.post_spike
-
+        # 初始化狀態 (如果還沒初始化的話)
+        if self.v is None:
+            self.reset_state(x.shape[0], x.device)
+            
+        # --- Izhikevich 數值積分 (Euler Method, dt=1ms) ---
+        # 這裡我們假設 dt=1 簡化計算，很多論文這樣做以節省算力
+        
+        # v' = 0.04v^2 + 5v + 140 - u + I
+        v_next = self.v + (0.04 * self.v**2 + 5 * self.v + 140 - self.u + I)
+        
+        # u' = a(bv - u)
+        u_next = self.u + self.a * (self.b * self.v - self.u)
+        
+        # 更新狀態
+        self.v = v_next
+        self.u = u_next
+        
+        # --- 發火與重置機制 ---
+        # 判斷是否發火 (Threshold 通常設為 30mV)
+        self.post_spike = (self.v >= 30.0).float()
+        
+        # 重置邏輯 (Vectorized Reset)
+        # 如果發火(1): v -> c, u -> u + d
+        # 如果沒發火(0): v -> v, u -> u
+        
+        # v = (1 - spike) * v + spike * c
+        self.v = (1.0 - self.post_spike) * self.v + self.post_spike * self.c
+        
+        # u = u + spike * d
+        self.u = self.u + self.post_spike * self.d
+        
+        # --- 更新資格跡 (給 Three-factor Learning) ---
+        self.trace = self.trace * self.trace_decay + self.post_spike
+        
         return self.post_spike
-    
-
-class SNN(nn.Module):
-    def __init__ (self, input_dim, output_dim, hidden_dims):
-        super(SNN, self).__init__()
-        self.layer1 = LIFlayer(input_dim, hidden_dims)
-        self.layer2 = LIFlayer(hidden_dims, hidden_dims)
-        self.layer3 = LIFlayer(hidden_dims, output_dim)
-
-    def reset_states(self):
-        self.layer1.reset_state()
-        self.layer2.reset_state()
-        self.layer3.reset_state()
-
-    def forward(self, x):
-        spk1 = self.layer1(x)
-        spk2 = self.layer2(spk1)
-        spk3 = self.layer3(spk2)
-        return spk3
-        
