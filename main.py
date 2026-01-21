@@ -28,7 +28,7 @@ def make_env(cfg):
     suite = cfg["env"]
 
     if suite == "unity_env":
-        from envs.unity_env import UnityEnv
+        from PNS.unity_env import UnityEnv
 
         executable_path = cfg.get("executable_path", "path/to/build.exe")
         decision_interval = cfg.get("decision_interval", 1)
@@ -42,7 +42,7 @@ def make_env(cfg):
 
         use_motor = cfg.get("use_motor", False)
         if use_motor:
-            from envs.motor_env import MotorEnv
+            from PNS.motor_env import MotorEnv
             from motor.controller.motor_controller import MotorController
 
             mapping_path = cfg.get("mapping_path", "action_mapping.txt")
@@ -104,7 +104,7 @@ class Workspace(object):
         cfg["agent"]["device"] = cfg["device"]
 
         # instantiate agent manually
-        from agent.sac.sac import SACAgent
+        from Brain.sac.sac import SACAgent
 
         self.agent = SACAgent(**cfg["agent"])
 

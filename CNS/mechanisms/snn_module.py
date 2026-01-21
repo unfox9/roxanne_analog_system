@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import numpy as np
+
 
 class IzhikevichLayer(nn.Module):
     def __init__(self, input_size, output_size, a=0.02, b=0.2, c=-65.0, d=8.0):
