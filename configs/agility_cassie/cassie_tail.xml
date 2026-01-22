@@ -19,6 +19,9 @@
       <default class="collision-right">
         <geom contype="4" conaffinity="2"/>
       </default>
+      <default class="tail_collision">
+       <geom contype="2" conaffinity="1" type="capsule"/>
+    </default>
     </default>
   </default>
 
@@ -67,36 +70,30 @@
       <site name="imu" size="0.01" pos="0.03155 0 -0.07996"/>
 
       <!-- <tail>  -->
-      <body name="tail_base" pos="-0.12 0 0.08" euler="0 20 0">
-        <inertial pos="-0.1 0 0" mass="0.5" diaginertia="0.01 0.01 0.01"/>
-        <joint name="tail_base_pitch" axis="0 1 0" range="-50 20" stiffness="20" damping="2"/>
-        <joint name="tail_base_yaw"   axis="0 0 1" range="-40 40" stiffness="20" damping="2"/>
-        <geom type="capsule" size="0.035" fromto="0 0 0 -0.2 0 0" rgba="0.6 0.6 0.6 1" group="1"/>
-
-        <body name="tail_2" pos="-0.2 0 0">
-          <inertial pos="-0.1 0 0" mass="0.3" diaginertia="0.01 0.01 0.01"/>
-          <joint name="tail_2_pitch" axis="0 1 0" range="-40 40" stiffness="10" damping="1"/>
-          <geom type="capsule" size="0.025" fromto="0 0 0 -0.25 0 0" rgba="0.8 0.8 0.8 1" group="1"/>
-
-          <body name="tail_3" pos="-0.2 0 0">
-            <inertial pos="-0.1 0 0" mass="0.3" diaginertia="0.01 0.01 0.01"/>
-            <joint name="tail_3_pitch" axis="0 1 0" range="-40 40" stiffness="10" damping="1"/>
-            <geom type="capsule" size="0.025" fromto="0 0 0 -0.25 0 0" rgba="0.8 0.8 0.8 1" group="1"/>
-
-            <body name="tail_4" pos="-0.2 0 0">
-              <inertial pos="-0.1 0 0" mass="0.3" diaginertia="0.01 0.01 0.01"/>
-              <joint name="tail_4_pitch" axis="0 1 0" range="-40 40" stiffness="10" damping="1"/>
-              <geom type="capsule" size="0.025" fromto="0 0 0 -0.25 0 0" rgba="0.8 0.8 0.8 1" group="1"/>
-
-              <body name="tail_5" pos="-0.2 0 0">
-                <inertial pos="-0.1 0 0" mass="0.3" diaginertia="0.01 0.01 0.01"/>
-                <joint name="tail_5_pitch" axis="0 1 0" range="-40 40" stiffness="10" damping="1"/>
-                <geom type="capsule" size="0.025" fromto="0 0 0 -0.25 0 0" rgba="0.8 0.8 0.8 1" group="1"/>
-                
-                <body name="tail_tip" pos="-0.2 0 0">
-                  <inertial pos="-0.1 0 0" mass="0.3" diaginertia="0.01 0.01 0.01"/>
-                  <joint name="tail_tip_pitch" axis="0 1 0" range="-40 40" stiffness="10" damping="1"/>
-                  <geom type="capsule" size="0.025" fromto="0 0 0 -0.25 0 0" rgba="0.8 0.8 0.8 1" group="1"/>
+      <body name="tail_base" pos="-0.12 0 0.08">
+        <joint name="tail_base_pitch" axis="0 1 0" range="-50 20" stiffness="30" damping="2"/>
+        <joint name="tail_base_yaw"   axis="0 0 1" range="-40 40" stiffness="30" damping="2"/>
+        <geom size="0.035" fromto="0 0 0 -0.1 0 0" rgba="0.6 0.6 0.6 1" group="1" mass="1" class="tail_collision"/>
+        <body name="tail_2" pos="-0.1 0 0">
+          <joint name="tail_2_pitch" axis="0 1 0" range="-50 20" stiffness="20" damping="1"/>
+          <joint name="tail_2_yaw"   axis="0 0 1" range="-40 40" stiffness="20" damping="1"/>
+          <geom size="0.032" fromto="0 0 0 -0.1 0 0" rgba="0.7 0.7 0.7 1" group="1" mass="0.7" class="tail_collision"/>
+          <body name="tail_3" pos="-0.1 0 0">
+            <joint name="tail_3_pitch" axis="0 1 0" range="-50 20" stiffness="10" damping="1"/>
+            <joint name="tail_3_yaw"   axis="0 0 1" range="-40 40" stiffness="10" damping="1"/>
+            <geom size="0.029" fromto="0 0 0 -0.1 0 0" rgba="0.8 0.8 0.8 1" group="1" mass="0.6" class="tail_collision"/>
+            <body name="tail_4" pos="-0.1 0 0">
+              <joint name="tail_4_pitch" axis="0 1 0" range="-50 20" stiffness="5" damping="0.5"/>
+              <joint name="tail_4_yaw"   axis="0 0 1" range="-40 40" stiffness="5" damping="0.5"/>
+              <geom size="0.026" fromto="0 0 0 -0.1 0 0" rgba="0.85 0.85 0.85 1" group="1" mass="0.5" class="tail_collision"/>
+              <body name="tail_5" pos="-0.1 0 0">
+                <joint name="tail_5_pitch" axis="0 1 0" range="-50 20" stiffness="3" damping="0.5"/>
+                <joint name="tail_5_yaw"   axis="0 0 1" range="-40 40" stiffness="3" damping="0.5"/>
+                <geom size="0.023" fromto="0 0 0 -0.1 0 0" rgba="0.9 0.9 0.9 1" group="1" mass="0.5" class="tail_collision"/>
+                <body name="tail_tip" pos="-0.1 0 0">
+                  <joint name="tail_tip_pitch" axis="0 1 0" range="-50 20" stiffness="2" damping="0.1"/>
+                  <joint name="tail_tip_yaw"   axis="0 0 1" range="-40 40" stiffness="2" damping="0.1"/>
+                  <geom size="0.02" fromto="0 0 0 -0.1 0 0" rgba="1 1 1 1" group="1" mass="0.5" class="tail_collision"/>
                 </body>
               </body>
             </body>
@@ -284,8 +281,12 @@
     <motor name="right-foot" joint="right-foot" gear="50" ctrlrange="-0.9 0.9" user="5500"/>
 
     <!-- Tail actuators -->
-    <motor name="tail_base_pitch" joint="tail_base_pitch" gear="10" ctrllimited="true" ctrlrange="-1 1"/>
-    <motor name="tail_base_yaw"   joint="tail_base_yaw"   gear="10" ctrllimited="true" ctrlrange="-1 1"/>
+    <motor name="tail_base_pitch" joint="tail_base_pitch" gear="10" ctrllimited="true" ctrlrange="-0.9 0.9"/>
+    <motor name="tail_base_yaw"   joint="tail_base_yaw"   gear="10" ctrllimited="true" ctrlrange="-0.9 0.9"/>
+    <motor name="tail_2_pitch"    joint="tail_2_pitch"    gear="8"  ctrllimited="true" ctrlrange="-0.9 0.9"/>
+    <motor name="tail_2_yaw"      joint="tail_2_yaw"      gear="8"  ctrllimited="true" ctrlrange="-0.9 0.9"/>
+    <motor name="tail_3_pitch"    joint="tail_3_pitch"    gear="6"  ctrllimited="true" ctrlrange="-0.9 0.9"/>
+    <motor name="tail_3_yaw"      joint="tail_3_yaw"      gear="6"  ctrllimited="true" ctrlrange="-0.9 0.9"/>
 
   </actuator>
 

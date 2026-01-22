@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 # 1. 指向您的 XML
-xml_path = "configs/hello_world.xml"  # 或是 "configs/hello_world.xml"
+xml_path = "configs/agility_cassie/scene.xml"  # 或是 "configs/hello_world.xml"
 
 # 2. 建立環境
 env = WolfEnv(xml_path)
