@@ -9,9 +9,6 @@ import sys
 import time
 import pickle as pkl
 
-from logger import Logger
-from replay_buffer import ReplayBuffer
-import utils
 
 from ruamel.yaml import YAML
 import pathlib
@@ -27,44 +24,18 @@ def load_yaml(path):
 def make_env(cfg):
     suite = cfg["env"]
 
-    if suite == "unity_env":
-        from PNS.unity_env import UnityEnv
+    if suite == "WolfEnv":
+        from PNS.mujoco_env import WolfEnv
 
         executable_path = cfg.get("executable_path", "path/to/build.exe")
         decision_interval = cfg.get("decision_interval", 1)
         render = cfg.get("render", True)
 
-        base_env = UnityEnv(
+        base_env = WolfEnv(
             executable_path=executable_path,
             decision_interval=decision_interval,
             render=render,
         )
-
-        use_motor = cfg.get("use_motor", False)
-        if use_motor:
-            from PNS.motor_env import MotorEnv
-            from motor.controller.motor_controller import MotorController
-
-            mapping_path = cfg.get("mapping_path", "action_mapping.txt")
-            latent_dim = cfg.get("latent_action_dim", 8)
-            dt = cfg.get("dt", 0.02)
-
-            def controller_factory():
-                return MotorController(
-                    mapping_path=mapping_path, dt=dt, expected_action_dim=None
-                )
-
-            env = MotorEnv(
-                inner_env=base_env,
-                controller_factory=controller_factory,
-                latent_dim=latent_dim,
-                dt=dt,
-            )
-
-        else:
-            env = base_env
-    else:
-        raise ValueError(f"unknown env: {suite}")
 
     return env
 

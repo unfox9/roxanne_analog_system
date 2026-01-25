@@ -26,14 +26,17 @@ class IzhikevichLayer(nn.Module):
         self.v = torch.ones(batch_size, self.synapse.out_features).to(device) * -65.0
         self.u = self.v * self.b
         self.trace = torch.zeros_like(self.v)
+        self.post_spike = torch.zeros(batch_size, self.synapse.out_features).to(device)
 
-    def forward(self, x, dt=1.0):
+    def forward(self, external_current, dt=1.0):
         
-        self.pre_spike = x.detach()
-        I = self.synapse(x)
+        self.pre_spike = external_current.detach()
+        I_rec = self.synapse(self.post_spike)
         
+        I = external_current + I_rec
+
         if self.v is None:
-            self.reset_state(x.shape[0], x.device)
+            self.reset_state(external_current.shape[0], external_current.device)
             
         # v' = 0.04v^2 + 5v + 140 - u + I
         dv = (0.04 * self.v**2 + 5 * self.v + 140 - self.u + I)
@@ -54,7 +57,6 @@ class IzhikevichLayer(nn.Module):
         
         # u = u + spike * d
         self.u = self.u + self.post_spike * self.d
-        
         
         self.trace = self.trace * self.trace_decay + self.post_spike
         
