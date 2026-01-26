@@ -11,11 +11,11 @@ def test_pavlov_unified():
     n_neurons = 100
     decision_neuron_idx = 99 
     n_steps = 1000
-    device = torch.device("cpu") 
+    device = torch.device("cuda") 
     save_path = "result_unified_fixed.png"
     
     # === 關鍵參數調整 ===
-    input_gain = 15.0  # 降低輸入強度（從 20 降到 15）
+    input_gain = 30.0  # 降低輸入強度（從 20 降到 15）
     noise_level = 2.0  # 降低噪音
     learning_rate = 0.01 # 大幅降低學習率（從 0.05 降到 0.005）
     max_weight = 4.0  # 設定權重上限
@@ -23,17 +23,15 @@ def test_pavlov_unified():
     # 初始化層（加入 refractory period）
     layer = IzhikevichLayer(
         n_neurons, 
-        a=0.02, 
-        b=0.2,
-        d=2.0,  # 調整恢復參數 d
-        refractory_steps=5  # 5 個時間步的不反應期
+        d=2.0,
+        refractory_steps=5 # 5 個時間步的不反應期
     ) 
     
     # === 關鍵：降低連接機率和初始權重 ===
     layer.init_weights(
         strategy="random",
         connection_prob=0.5,  # 只有 10% 的連接
-        max_weight=2.0  # 初始權重最大 0.3
+        max_weight=5.0 # 初始權重最大 0.3
     ) 
     layer.to(device)
     
@@ -44,9 +42,9 @@ def test_pavlov_unified():
     opt = ThreeFactorOptimizer(
         layer, 
         n_neurons, 
+        theta_d=0.3,
+        theta_p=0.8,
         lr=learning_rate,  # 使用更小的學習率
-        decay_e=0.95, 
-        decay_trace=0.90,
         max_weight=max_weight  # 傳入權重上限
     )
 
@@ -84,7 +82,7 @@ def test_pavlov_unified():
             current_input = base_input + noise
             
             # 前向傳播
-            layer(current_input)
+            spikes, calcium = layer(current_input)
             
             # 記錄決策神經元的放電
             decision_spike = layer.post_spike[:, decision_neuron_idx].item()

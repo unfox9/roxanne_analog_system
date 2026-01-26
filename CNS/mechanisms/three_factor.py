@@ -2,20 +2,33 @@ import torch
 import torch.nn as nn
 
 class ThreeFactorOptimizer:
-    def __init__(self, layer, n_neurons, lr=1e-3, decay_e=0.95, decay_trace=0.95, max_weight=1.0):
+    def __init__(self, 
+                 layer, 
+                 n_neurons, 
+                 lr=1e-3, 
+                 theta_d=0.5,
+                 theta_p=1.2,
+                 gamma_p = 1.0,
+                 gamma_d = 0.5,
+                 max_weight=4.0
+                 ):
         self.n_neurons = n_neurons
         self.layer = layer
         self.lr = lr
-        self.decay_e = decay_e
-        self.decay_trace = decay_trace 
         self.max_weight = max_weight
+        
+        self.theta_d = theta_d
+        self.theta_p = theta_p
+
+        self.gamma_p = gamma_p
+        self.gamma_d = gamma_d
         
         self.eligibility_trace = torch.zeros(self.n_neurons, self.n_neurons).to(layer.synapse.weight.device)
         
         self.pre_trace = torch.zeros(self.n_neurons).to(layer.synapse.weight.device)
         
         self.dopamine_level = 0.0
-        self.dopmine_decay = 0.9
+        self.dopamine_decay = 0.9
         self.dopamine_baseline = 0.0
 
         self.v_threshold_for_learning = -50.0
@@ -26,20 +39,9 @@ class ThreeFactorOptimizer:
         self.A_plus = 1.0
         self.A_minus = 0.5
 
-    def compute_stdp(self, pre_trace, post_activity):
-        #post (N, 1) @ pre (1, N) -> (N, N)
-        post_col = post_activity.unsqueeze(1)  
-        pre_row = pre_trace.unsqueeze(0)
-
-        hebbian = torch.matmul(post_col, pre_row)
-
-        stdp_update = hebbian * self.A_plus
-
-        return stdp_update
-
     def step(self, reward):
         current_spikes = self.layer.post_spike.detach()
-        current_v = self.layer.v.detach()
+        ca = self.layer.calcium.mean(dim=0)
 
         if current_spikes is None:
             return
@@ -49,24 +51,32 @@ class ThreeFactorOptimizer:
         if self.eligibility_trace.device != current_spikes.device:
             self.eligibility_trace = self.eligibility_trace.to(current_spikes.device)
 
-        post_excitability = torch.relu(current_v - self.v_threshold_for_learning)
-        post_activity = post_excitability.mean(dim=0) # Shape: (N, 1)
+        ltp_mask = (ca > self.theta_p).float()
+        ltd_mask = ((ca > self.theta_d) & (ca <= self.theta_p)).float()
 
-        stdp_update = self.compute_stdp(self.pre_trace, post_activity)        
+        pre_activity = self.layer.spike_buffer.mean(dim=2).mean(dim=0)
         
-        # E(t) = E(t-1) * decay + STDP(t)
-        self.eligibility_trace = self.eligibility_trace * self.decay_e + stdp_update
-        self.pre_trace = self.pre_trace * self.decay_trace + current_spikes.mean(dim=0)
+        # Pre Rate: (1, N)
+        pre_rate_row = pre_activity.unsqueeze(0)
 
-        self.dopamine_level = self.dopamine_level * self.dopmine_decay + reward
+        ltp_mask_col = ltp_mask.unsqueeze(1)
+        ltd_mask_col = ltd_mask.unsqueeze(1)
+
+        delta_ltp = torch.matmul(ltp_mask_col, pre_rate_row) * self.gamma_p
+        delta_ltd = torch.matmul(ltd_mask_col, pre_rate_row) * self.gamma_d
+
+        stdp_update = delta_ltp - delta_ltd
+
+        # E(t) = E(t-1) * decay + STDP(t)
+        self.eligibility_trace = self.eligibility_trace * 0.95  + stdp_update
+
+        self.dopamine_level = self.dopamine_level * self.dopamine_decay + reward
         self.dopamine_level = self.dopamine_level * 0.95 + self.dopamine_baseline * 0.05
 
         # dW = Learning_Rate * Dopamine * Eligibility
         if abs(self.dopamine_level) > 0.001:
-            neuron_types = self.layer.neuron_type.to(self.layer.synapse.weight.device)
-            type_modifier = neuron_types.unsqueeze(0)
-
-            delta_w = self.lr * self.dopamine_level * self.eligibility_trace * type_modifier
+            # dW = lr * dopamine * trace * sign(pre_neuron_type)
+            delta_w = self.lr * self.dopamine_level * self.eligibility_trace
             
             with torch.no_grad():
                 self.layer.synapse.weight += delta_w

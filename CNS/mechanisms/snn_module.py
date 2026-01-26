@@ -4,11 +4,21 @@ import numpy as np
 
 
 class IzhikevichLayer(nn.Module):
-    def __init__(self, n_neurons, exc_ratio=0.8, a=0.02, b=0.2, c=-65.0, d=8.0, refractory_steps=5):
+    def __init__(self, 
+                 n_neurons, 
+                 exc_ratio=0.8, 
+                 a=0.02, 
+                 b=0.2, 
+                 c=-65.0, 
+                 d=2.0, 
+                 max_delay_ms=20, 
+                 dt=1.0,
+                 refractory_steps=5):
         super().__init__()
         
         self.n_neurons = n_neurons
-
+        self.dt = dt
+        self.max_delay_steps = int(max_delay_ms / dt)
         self.refractory_steps = refractory_steps
         
         # Dale's Principle
@@ -25,12 +35,20 @@ class IzhikevichLayer(nn.Module):
         self.c = nn.Parameter(torch.ones(n_neurons) * c + torch.randn(n_neurons) * 0.01, requires_grad=False)
         self.d = nn.Parameter(torch.ones(n_neurons) * d + torch.randn(n_neurons) * 0.01, requires_grad=False)
         
+        self.axonal_delays = torch.randint(1, self.max_delay_steps, (n_neurons,))
+
         self.v = None 
         self.u = None 
-        self.trace = None 
-        self.pre_spike = None
+        
+        # Post-synaptic Calcium
+        self.calcium = None
+        self.tau_ca = 20.0
+        self.ca_pre = 0.0
+        self.ca_spike = 1.0
+
+        # Shape: (Batch, Neurons, Time_Window)
+        self.spike_buffer = None
         self.post_spike = None
-        self.trace_decay = 0.95
 
         self.refractory_counter = None
 
@@ -50,29 +68,41 @@ class IzhikevichLayer(nn.Module):
     def reset_state(self, batch_size, device):
         self.v = torch.ones(batch_size, self.synapse.out_features).to(device) * -65.0
         self.u = self.v * self.b
-        self.trace = torch.zeros_like(self.v)
-        self.post_spike = torch.zeros(batch_size, self.synapse.out_features).to(device)
+        self.calcium = torch.zeros(batch_size, self.n_neurons).to(device)
         self.refractory_counter = torch.zeros(batch_size, self.synapse.out_features).to(device)
+        self.axonal_delays = self.axonal_delays.to(device)
+        self.post_spike = torch.zeros(batch_size, self.synapse.out_features).to(device)
+        self.spike_buffer = torch.zeros(batch_size, self.n_neurons, self.max_delay_steps).to(device)
 
-    def forward(self, external_current, dt=1.0):
+    def forward(self, external_current):
         if self.v is None:
             self.reset_state(external_current.shape[0], external_current.device)
             
-        self.pre_spike = external_current.detach()
+        batch_size = external_current.shape[0]
+
+        # delay_indices shape: (Batch, Neurons, 1)
+        delay_indices = self.axonal_delays.view(1, -1, 1).expand(batch_size, -1, 1)
+        delayed_spikes = torch.gather(self.spike_buffer, 2, delay_indices).squeeze(2)
 
         # I_internal = Spikes @ Weights
-        internal_current = self.synapse(self.post_spike)
+        internal_current = self.synapse(delayed_spikes)
 
         I = external_current + internal_current
 
+        last_spike = self.spike_buffer[:, :, 0]
+
+        calcium_influx = last_spike * self.ca_spike
+        d_calcium = (-self.calcium / self.tau_ca) * self.dt + calcium_influx
+        self.calcium = self.calcium + d_calcium
+
         # v' = 0.04v^2 + 5v + 140 - u + I
         dv = (0.04 * self.v**2 + 5 * self.v + 140 - self.u + I)
-        v_next = self.v + dt * dv
+        v_next = self.v + self.dt * dv
         v_next = torch.clamp(v_next, min=-100.0, max=100.0)
 
         # u' = a(bv - u)
         du = self.a * (self.b * self.v - self.u)
-        u_next = self.u + dt * du
+        u_next = self.u + self.dt * du
 
         self.v = v_next
         self.u = u_next
@@ -94,14 +124,23 @@ class IzhikevichLayer(nn.Module):
         )
         self.refractory_counter = torch.clamp(self.refractory_counter, min=0)
 
-        self.trace = self.trace * self.trace_decay + self.post_spike
-        
-        return self.post_spike
-    
+        # buffer[:, :, 1:] = buffer[:, :, :-1]
+        # buffer[:, :, 0] = new_spikes
+        self.spike_buffer = torch.roll(self.spike_buffer, shifts=1, dims=2)
+        self.spike_buffer[:, :, 0] = self.post_spike
+
+        return self.post_spike, self.calcium
+
     def enforce_dale_principle(self, max_exc_weight=1.0, max_inh_weight=1.0):
         with torch.no_grad():
             exc_mask = self.neuron_type > 0
-            inh_mask = self.neuron_type < 0
+            if exc_mask.any():
+                self.synapse.weight[:, exc_mask] = self.synapse.weight[:, exc_mask].clamp(
+                    min=0.0, max=max_exc_weight
+                )
             
-            self.synapse.weight[:, exc_mask] = self.synapse.weight[:, exc_mask].clamp(min=0.0, max=max_exc_weight)
-            self.synapse.weight[:, inh_mask] = self.synapse.weight[:, inh_mask].clamp(min=-max_inh_weight, max=0.0)
+            inh_mask = ~exc_mask  # 取反
+            if inh_mask.any():
+                self.synapse.weight[:, inh_mask] = self.synapse.weight[:, inh_mask].clamp(
+                    min=-max_inh_weight, max=0.0
+                )
