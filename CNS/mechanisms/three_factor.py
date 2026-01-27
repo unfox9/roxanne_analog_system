@@ -1,32 +1,36 @@
 import torch
 import torch.nn as nn
 
+
 class ThreeFactorOptimizer:
-    def __init__(self, 
-                 layer, 
-                 n_neurons, 
-                 lr=1e-3, 
-                 theta_d=0.5,
-                 theta_p=1.2,
-                 gamma_p = 1.0,
-                 gamma_d = 0.5,
-                 max_weight=4.0
-                 ):
+    def __init__(
+        self,
+        layer,
+        n_neurons,
+        lr=1e-3,
+        theta_d=0.5,
+        theta_p=1.2,
+        gamma_p=1.0,
+        gamma_d=0.5,
+        max_weight=4.0,
+    ):
         self.n_neurons = n_neurons
         self.layer = layer
         self.lr = lr
         self.max_weight = max_weight
-        
+
         self.theta_d = theta_d
         self.theta_p = theta_p
 
         self.gamma_p = gamma_p
         self.gamma_d = gamma_d
-        
-        self.eligibility_trace = torch.zeros(self.n_neurons, self.n_neurons).to(layer.synapse.weight.device)
-        
+
+        self.eligibility_trace = torch.zeros(self.n_neurons, self.n_neurons).to(
+            layer.synapse.weight.device
+        )
+
         self.pre_trace = torch.zeros(self.n_neurons).to(layer.synapse.weight.device)
-        
+
         self.dopamine_level = 0.0
         self.dopamine_decay = 0.9
         self.dopamine_baseline = 0.0
@@ -45,7 +49,7 @@ class ThreeFactorOptimizer:
 
         if current_spikes is None:
             return
-        
+
         if self.pre_trace.device != current_spikes.device:
             self.pre_trace = self.pre_trace.to(current_spikes.device)
         if self.eligibility_trace.device != current_spikes.device:
@@ -55,7 +59,7 @@ class ThreeFactorOptimizer:
         ltd_mask = ((ca > self.theta_d) & (ca <= self.theta_p)).float()
 
         pre_activity = self.layer.spike_buffer.mean(dim=2).mean(dim=0)
-        
+
         # Pre Rate: (1, N)
         pre_rate_row = pre_activity.unsqueeze(0)
 
@@ -68,7 +72,7 @@ class ThreeFactorOptimizer:
         stdp_update = delta_ltp - delta_ltd
 
         # E(t) = E(t-1) * decay + STDP(t)
-        self.eligibility_trace = self.eligibility_trace * 0.95  + stdp_update
+        self.eligibility_trace = self.eligibility_trace * 0.95 + stdp_update
 
         self.dopamine_level = self.dopamine_level * self.dopamine_decay + reward
         self.dopamine_level = self.dopamine_level * 0.95 + self.dopamine_baseline * 0.05
@@ -77,14 +81,13 @@ class ThreeFactorOptimizer:
         if abs(self.dopamine_level) > 0.001:
             # dW = lr * dopamine * trace * sign(pre_neuron_type)
             delta_w = self.lr * self.dopamine_level * self.eligibility_trace
-            
+
             with torch.no_grad():
                 self.layer.synapse.weight += delta_w
                 self.layer.enforce_dale_principle(
-                    max_exc_weight=self.max_weight, 
-                    max_inh_weight=self.max_weight
+                    max_exc_weight=self.max_weight, max_inh_weight=self.max_weight
                 )
-                
+
         with torch.no_grad():
             self.layer.synapse.weight.mul_(0.9999)
 
@@ -93,7 +96,7 @@ class ThreeFactorOptimizer:
 
     def get_dopamine_level(self):
         return self.dopamine_level
-    
+
     def get_weight_stats(self):
         w = self.layer.synapse.weight.data
         return {
@@ -101,6 +104,5 @@ class ThreeFactorOptimizer:
             "std": w.std().item(),
             "max": w.max().item(),
             "min": w.min().item(),
-            "nonzero": (w != 0).sum().item()
+            "nonzero": (w != 0).sum().item(),
         }
-                

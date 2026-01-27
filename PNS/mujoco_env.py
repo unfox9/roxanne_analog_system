@@ -3,6 +3,7 @@ import mujoco.viewer
 import numpy as np
 import time
 
+
 class WolfEnv:
     def __init__(self, xml_path):
         self.model = mujoco.MjModel.from_xml_path(xml_path)
@@ -18,7 +19,7 @@ class WolfEnv:
             self.data.ctrl[:] = action
 
         mujoco.mj_step(self.model, self.data)
-        
+
         return self.get_observation()
 
     def get_observation(self):
@@ -27,9 +28,9 @@ class WolfEnv:
     def render(self):
         if self.viewer is None:
             self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        
+
         self.viewer.sync()
-        
+
     def close(self):
         if self.viewer:
             self.viewer.close()
