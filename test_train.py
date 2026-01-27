@@ -8,9 +8,9 @@ from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 def test_pavlov_unified():
     print("開始巴甫洛夫測試...")
 
-    n_neurons = 300
+    n_neurons = 1000
     decision_neuron_idx = 0
-    n_steps = 2000
+    n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
@@ -44,12 +44,19 @@ def test_pavlov_unified():
         max_weight=max_weight,  # 傳入權重上限
     )
 
+    try:
+        layer = torch.compile(layer)
+        print("✅ 已啟用 torch.compile 加速")
+    except Exception as e:
+        print("⚠️ 無法啟用 torch.compile，將使用一般模式:", e)
+
     # 定義輸入模式
     pattern_A_mask = torch.zeros(n_neurons)
     pattern_A_mask[:25] = 1.0
-
     pattern_B_mask = torch.zeros(n_neurons)
     pattern_B_mask[25:50] = 1.0
+
+    trial_patterns = (torch.rand(n_steps, device=device) > 0.5).float()
 
     # 記錄數據
     spike_counts = []
@@ -59,15 +66,13 @@ def test_pavlov_unified():
 
     for trial in range(n_steps):
         # 隨機選擇模式
-        is_pattern_A = torch.rand(1) > 0.5
+        is_pattern_A = trial_patterns[trial] == 1.0
 
         # 準備基礎輸入
-        if is_pattern_A:
-            base_input = (pattern_A_mask * input_gain).unsqueeze(0).to(device)
-        else:
-            base_input = (pattern_B_mask * input_gain).unsqueeze(0).to(device)
+        base_input = (pattern_A_mask if is_pattern_A else pattern_B_mask) * input_gain
+        base_input = base_input.unsqueeze(0).to(device)
 
-        total_decision_spikes = 0
+        total_decision_spikes = torch.tensor(0.0, device=device)
 
         # 時間步演化
         for t in range(50):
@@ -81,8 +86,7 @@ def test_pavlov_unified():
             spikes, calcium = layer(current_input)
 
             # 記錄決策神經元的放電
-            decision_spike = layer.post_spike[:, decision_neuron_idx].item()
-            total_decision_spikes += decision_spike
+            total_decision_spikes += layer.post_spike[:, decision_neuron_idx].sum()
 
             # 每步都更新 eligibility（無獎勵）
             opt.step(reward=0.0)
@@ -100,17 +104,16 @@ def test_pavlov_unified():
         # 用累積的 eligibility 和獎勵學習
         opt.step(reward=reward)
 
-        # 記錄權重差異和最大權重
-        w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()
-        diff = w[:25].mean() - w[25:50].mean()
-        w_max = layer.synapse.weight.data.abs().max().item()
-
-        weight_diff.append(diff)
-        spike_counts.append(total_decision_spikes)
+        spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
-        weight_max_history.append(w_max)
 
         if trial % 100 == 0:
+            w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()
+            diff = w[:25].mean() - w[25:50].mean()
+            w_max = layer.synapse.weight.data.abs().max().item()
+
+            weight_diff.append(diff)
+            weight_max_history.append(w_max)
             recent_avg = (
                 sum(spike_counts[-10:]) / 10
                 if len(spike_counts) >= 10

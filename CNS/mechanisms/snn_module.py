@@ -88,12 +88,13 @@ class IzhikevichLayer(nn.Module):
         with torch.no_grad():
             self.synapse.weight.fill_(0.0)
             if strategy == "random":
-                for i in range(self.n_neurons):
-                    for j in range(self.n_neurons):
-                        if i != j and torch.rand(1) < connection_prob:
-                            strength = torch.rand(1) * 0.3 * max_weight
-                            self.synapse.weight[j, i] = strength * self.neuron_type[i]
-
+                device = self.synapse.weight.device
+                weights = torch.rand(self.n_neurons, self.n_neurons, device=device)
+                weights.mul_(0.3 * max_weight)
+                weights.mul_(self.neuron_type.view(1, -1))
+                mask = torch.rand(self.n_neurons, self.n_neurons, device=device) < connection_prob
+                mask.fill_diagonal_(False)
+                self.synapse.weight.data.copy_(weights * mask.float())
             elif strategy == "empty":
                 self.synapse.weight.data.fill_(0.0)
 
