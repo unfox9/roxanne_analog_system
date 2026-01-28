@@ -111,9 +111,22 @@ class IzhikevichLayer(nn.Module):
             batch_size, self.n_neurons, self.max_delay_steps
         ).to(device)
 
-    def forward(self, external_current):
+    def forward(self, external_current, neuromodulation_deltas=None):
         if self.v is None:
             self.reset_state(external_current.shape[0], external_current.device)
+
+        current_bias = 0.0
+        current_d = self.d 
+        current_b = self.b
+        if neuromodulation_deltas:
+            if 'input_bias' in neuromodulation_deltas:
+                current_bias = neuromodulation_deltas['input_bias']
+            
+            if 'd' in neuromodulation_deltas:
+                current_d = self.d + neuromodulation_deltas['d']
+            
+            if 'b' in neuromodulation_deltas:
+                current_b = self.b + neuromodulation_deltas['b']
 
         batch_size = external_current.shape[0]
 
@@ -138,7 +151,7 @@ class IzhikevichLayer(nn.Module):
         v_next = torch.clamp(v_next, min=-100.0, max=100.0)
 
         # u' = a(bv - u)
-        du = self.a * (self.b * self.v - self.u)
+        du = self.a * (current_b * self.v - self.u)
         u_next = self.u + self.dt * du
 
         self.v = v_next
@@ -151,7 +164,7 @@ class IzhikevichLayer(nn.Module):
         # v = (1 - spike) * v + spike * c
         self.v = (1.0 - self.post_spike) * self.v + self.post_spike * self.c
         # u = u + spike * d
-        self.u = self.u + self.post_spike * self.d
+        self.u = self.u + self.post_spike * current_d
 
         # Update refractory counter
         self.refractory_counter = torch.where(

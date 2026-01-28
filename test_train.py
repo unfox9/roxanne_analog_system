@@ -3,12 +3,13 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from CNS.mechanisms.snn_module import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
+from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
 
 
 def test_pavlov_unified():
     print("開始巴甫洛夫測試...")
 
-    n_neurons = 1000
+    n_neurons = 512
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,6 +45,8 @@ def test_pavlov_unified():
         max_weight=max_weight,  # 傳入權重上限
     )
 
+    dp = DopamineSystem(dt=1.0, decay_ms=50.0, base_level=0.1)
+
     try:
         layer = torch.compile(layer)
         print("✅ 已啟用 torch.compile 加速")
@@ -78,7 +81,6 @@ def test_pavlov_unified():
         for t in range(50):
             # 每個時間步都加新的噪音（但強度較低）
             noise = torch.randn_like(base_input) * noise_level
-            noise[:, decision_neuron_idx] += 5.0
 
             current_input = base_input + noise
 
@@ -87,9 +89,6 @@ def test_pavlov_unified():
 
             # 記錄決策神經元的放電
             total_decision_spikes += layer.post_spike[:, decision_neuron_idx].sum()
-
-            # 每步都更新 eligibility（無獎勵）
-            opt.step(reward=0.0)
 
         # 根據放電和模式給獎勵
         reward = 0
@@ -102,10 +101,15 @@ def test_pavlov_unified():
             reward = 0.0
 
         # 用累積的 eligibility 和獎勵學習
-        opt.step(reward=reward)
+        dp.update(influx=reward)
+        dopamine_signal = dp.signal()
+    
+        # 6. 獲取神經調質效果
+        neuron_deltas, synapse_deltas = dp.get_deltas()
 
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
+        opt.step(dopamine_system=dp)
 
         if trial % 100 == 0:
             w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()
@@ -127,6 +131,8 @@ def test_pavlov_unified():
                 f"Reward: {reward:+.1f}, "
                 f"W_diff: {diff:.4f}, "
                 f"W_max: {w_max:.4f}"
+                f"Dopamine level:{dp.current_level:.4f}, "
+                f"signal:{dp.signal():.4f}"
             )
 
     # === 改進的可視化 ===
