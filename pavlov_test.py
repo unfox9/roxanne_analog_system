@@ -9,43 +9,40 @@ from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
 def test_pavlov_unified():
     print("開始巴甫洛夫測試...")
 
-    n_neurons = 512
+    n_neurons = 4096
     decision_neuron_idx = 0
-    n_steps = 1000
+    n_steps = 2000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
-    # === 關鍵參數調整 ===
-    input_gain = 50.0  # 降低輸入強度（從 20 降到 15）
-    noise_level = 5.0  # 降低噪音
-    learning_rate = 0.05  # 大幅降低學習率（從 0.05 降到 0.005）
-    max_weight = 1.0  # 設定權重上限
+    input_gain = 20.0  
+    noise_level = 2.0  
+    learning_rate = 0.001  
+    max_weight = 1.0  
 
-    # 初始化層（加入 refractory period）
     layer = IzhikevichLayer(
-        n_neurons, refractory_steps=5  # 5 個時間步的不反應期
+        n_neurons, refractory_steps=5  
     )
 
-    # === 關鍵：降低連接機率和初始權重 ===
     layer.init_weights(
         strategy="random",
-        connection_prob=0.5,  # 只有 10% 的連接
-        max_weight=1.0,  # 初始權重最大 0.3
+        connection_prob=0.1,  
+        max_weight=1.0,  
     )
     layer.to(device)
 
-    # 只在最開始重置一次
     layer.reset_state(batch_size=1, device=device)
 
-    # 初始化優化器
+    dopamine = DopamineSystem(dt=1.0, base_level=0.1)
+
     opt = ThreeFactorOptimizer(
         layer,
         n_neurons,
-        lr=learning_rate,  # 使用更小的學習率
-        max_weight=max_weight,  # 傳入權重上限
+        dopamine,
+        lr=learning_rate,  
+        max_weight=max_weight,  
     )
 
-    dp = DopamineSystem(dt=1.0, decay_ms=50.0, base_level=0.1)
 
     try:
         layer = torch.compile(layer)
@@ -53,7 +50,6 @@ def test_pavlov_unified():
     except Exception as e:
         print("⚠️ 無法啟用 torch.compile，將使用一般模式:", e)
 
-    # 定義輸入模式
     pattern_A_mask = torch.zeros(n_neurons)
     pattern_A_mask[:25] = 1.0
     pattern_B_mask = torch.zeros(n_neurons)
@@ -61,55 +57,36 @@ def test_pavlov_unified():
 
     trial_patterns = (torch.rand(n_steps, device=device) > 0.5).float()
 
-    # 記錄數據
     spike_counts = []
     weight_diff = []
     rewards_history = []
-    weight_max_history = []  # 追蹤權重最大值
+    weight_max_history = []  
 
     for trial in range(n_steps):
-        # 隨機選擇模式
         is_pattern_A = trial_patterns[trial] == 1.0
 
-        # 準備基礎輸入
         base_input = (pattern_A_mask if is_pattern_A else pattern_B_mask) * input_gain
         base_input = base_input.unsqueeze(0).to(device)
 
         total_decision_spikes = torch.tensor(0.0, device=device)
 
-        # 時間步演化
         for t in range(50):
-            # 每個時間步都加新的噪音（但強度較低）
             noise = torch.randn_like(base_input) * noise_level
 
             current_input = base_input + noise
 
-            # 前向傳播
-            spikes, calcium = layer(current_input)
+            neuron_deltas, synapse_deltas = dopamine.get_deltas()
+            spikes, calcium = layer(current_input, neuromodulation_deltas=neuron_deltas)
 
-            # 記錄決策神經元的放電
             total_decision_spikes += layer.post_spike[:, decision_neuron_idx].sum()
 
-        # 根據放電和模式給獎勵
-        reward = 0
-        if total_decision_spikes > 0:
-            if is_pattern_A:
-                reward = 1.0
-            else:
-                reward = -1.0
-        else:
-            reward = 0.0
+        reward = compute_reward(total_decision_spikes, is_pattern_A)
 
-        # 用累積的 eligibility 和獎勵學習
-        dp.update(influx=reward)
-        dopamine_signal = dp.signal()
-    
-        # 6. 獲取神經調質效果
-        neuron_deltas, synapse_deltas = dp.get_deltas()
-
+        dopamine.update(influx=reward)
+        
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
-        opt.step(dopamine_system=dp)
+        opt.step(modulation_deltas=synapse_deltas)
 
         if trial % 100 == 0:
             w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()
@@ -130,9 +107,9 @@ def test_pavlov_unified():
                 f"Avg: {recent_avg:.1f}, "
                 f"Reward: {reward:+.1f}, "
                 f"W_diff: {diff:.4f}, "
-                f"W_max: {w_max:.4f}"
-                f"Dopamine level:{dp.current_level:.4f}, "
-                f"signal:{dp.signal():.4f}"
+                f"W_max: {w_max:.4f}, "
+                f"Dopamine level:{dopamine.current_level:.4f}, "
+                f"Signal:{dopamine.signal():.4f}"
             )
 
     # === 改進的可視化 ===
@@ -248,6 +225,13 @@ def test_pavlov_unified():
             f"\n⚠️  警告：權重超過限制 ({max(weight_max_history):.4f} > {max_weight})"
         )
         print("   建議：檢查 enforce_dale_principle() 是否正確執行")
+
+def compute_reward(spikes, is_patternA):
+    fired = spikes > 0
+    if is_patternA:
+        return 1.0 if fired else -0.5
+    else:
+        return -1.0 if fired else 0.5
 
 
 if __name__ == "__main__":

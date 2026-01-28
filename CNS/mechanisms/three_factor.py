@@ -7,6 +7,7 @@ class ThreeFactorOptimizer:
         self,
         layer,
         n_neurons,
+        dopamine,
         lr=1e-3,
         theta_d=0.5,
         theta_p=1.2,
@@ -39,10 +40,11 @@ class ThreeFactorOptimizer:
         self.A_plus = 1.0
         self.A_minus = 0.5
 
+        self.dopamine = dopamine
         self.dopamine_level = 0.0
 
 
-    def step(self, dopamine_system, modulation_deltas=None):
+    def step(self, modulation_deltas=None):
         lr_scale = 1.0
         is_frozen = False
         if modulation_deltas is not None:
@@ -86,7 +88,7 @@ class ThreeFactorOptimizer:
         # E(t) = E(t-1) * decay + STDP(t)
         self.eligibility_trace = self.eligibility_trace * 0.95 + stdp_update
 
-        self.dopamine_level = dopamine_system.signal()
+        self.dopamine_level = self.dopamine.signal()
 
         # dW = Learning_Rate * Dopamine * Eligibility
         if abs(self.dopamine_level) > 0.001:
