@@ -4,58 +4,127 @@ import matplotlib.pyplot as plt
 from CNS.mechanisms.snn_module import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
+from CNS.mechanisms.snn_projection import ConductanceSynapse
 
 
 def test_pavlov_unified():
-    print("開始巴甫洛夫測試...")
+    print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons = 512
+    n_neurons1 = 1024
+    n_neurons2 = 1024
+    n_neurons3 = 512
     decision_neuron_idx = 0
-    n_steps = 2000
+    n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
-    input_gain = 50.0
-    noise_level = 2.0
-    learning_rate = 0.001
+    input_gain = 10.0
+    noise_level = 5.0
+    learning_rate = 0.0001
     max_weight = 1.0
 
-    layer = IzhikevichLayer(n_neurons, refractory_steps=5)
+    bridge_gain = 10.0
 
-    layer.init_weights(
+    dopamine = DopamineSystem(dt=1.0, base_level=0.1)
+
+    layer1 = IzhikevichLayer(n_neurons1)
+    layer2 = IzhikevichLayer(n_neurons2)
+    layer3 = IzhikevichLayer(n_neurons3)
+
+    layer1.reset_state(batch_size=1, device=device)
+    layer2.reset_state(batch_size=1, device=device)
+    layer3.reset_state(batch_size=1, device=device)
+
+    layer1.init_weights(
         strategy="random",
         connection_prob=0.5,
         max_weight=1.0,
     )
-    layer.to(device)
+    layer2.init_weights(
+        strategy="random",
+        connection_prob=0.3,
+        max_weight=1.0,
+    )
+    layer3.init_weights(
+        strategy="random",
+        connection_prob=0.1,
+        max_weight=1.0,
+    )
+    layer1.to(device)
+    layer2.to(device)
+    layer3.to(device)
 
-    layer.reset_state(batch_size=1, device=device)
+    bridge1_2 = ConductanceSynapse(n_neurons1, n_neurons2) 
+    bridge2_3 = ConductanceSynapse(n_neurons2, n_neurons3)
+    bridge1_2.to(device)
+    bridge2_3.to(device)
 
-    dopamine = DopamineSystem(dt=1.0, base_level=0.1)
+    opt_l1_recurrent = ThreeFactorOptimizer(
+        layer=layer1,
+        n_neurons=n_neurons1,
+        dopamine=dopamine,
+        lr=learning_rate,
+        max_weight=max_weight,
+    )
 
-    opt = ThreeFactorOptimizer(
-        layer,
-        n_neurons,
-        dopamine,
+    # --- B. 訓練 Layer 1 -> Layer 2 的連接 (Feedforward) ---
+    opt_bridge1_2 = ThreeFactorOptimizer(
+        layer=layer2,           
+        n_neurons=n_neurons2,    
+        dopamine=dopamine,
+        pre_layer=layer1,        
+        post_layer=layer2,       
+        synapse=bridge1_2,
+        lr=learning_rate,
+        max_weight=max_weight,
+    )
+
+    # --- C. 訓練 Layer 2 的內部循環 (Recurrent) ---
+    opt_l2_recurrent = ThreeFactorOptimizer(
+        layer=layer2,
+        n_neurons=n_neurons2,
+        dopamine=dopamine,
+        lr=learning_rate,
+        max_weight=max_weight,
+    )
+
+    # --- D. 訓練 Layer 2 -> Layer 3 的連接 (Feedforward) ---
+    opt_bridge2_3 = ThreeFactorOptimizer(
+        layer=layer3,
+        n_neurons=n_neurons3,
+        dopamine=dopamine,
+        pre_layer=layer2,
+        post_layer=layer3,
+        synapse=bridge2_3,
+        lr=learning_rate,
+        max_weight=max_weight, 
+    )
+
+    # --- E. 訓練 Layer 3 的內部循環 (Recurrent) ---
+    opt_l3_recurrent = ThreeFactorOptimizer(
+        layer=layer3,
+        n_neurons=n_neurons3,
+        dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
     )
 
     try:
-        layer = torch.compile(layer)
+        layer1 = torch.compile(layer1)
+        layer2 = torch.compile(layer2)
+        layer3 = torch.compile(layer3)
         print("✅ 已啟用 torch.compile 加速")
     except Exception as e:
         print("⚠️ 無法啟用 torch.compile，將使用一般模式:", e)
 
-    pattern_A_mask = torch.zeros(n_neurons)
+    pattern_A_mask = torch.zeros(n_neurons1)
     pattern_A_mask[:25] = 1.0
-    pattern_B_mask = torch.zeros(n_neurons)
+    pattern_B_mask = torch.zeros(n_neurons1)
     pattern_B_mask[25:50] = 1.0
 
     trial_patterns = (torch.rand(n_steps, device=device) > 0.5).float()
 
     spike_counts = []
-    weight_diff = []
     rewards_history = []
     weight_max_history = []
 
@@ -73,9 +142,13 @@ def test_pavlov_unified():
             current_input = base_input + noise
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
-            spikes, calcium = layer(current_input, neuromodulation_deltas=neuron_deltas)
+            spikes1, calcium1 = layer1(current_input, neuromodulation_deltas=neuron_deltas)
+            input_current_2 = bridge1_2(spikes1, layer2.v) 
+            spikes2, calcium2 = layer2(input_current_2, neuromodulation_deltas=neuron_deltas)
+            input_current_3 = bridge2_3(spikes2, layer3.v) 
+            spikes3, calcium3 = layer3(input_current_3, neuromodulation_deltas=neuron_deltas)
 
-            total_decision_spikes += layer.post_spike[:, decision_neuron_idx].sum()
+            total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
 
         reward = compute_reward(total_decision_spikes, is_pattern_A)
 
@@ -83,27 +156,32 @@ def test_pavlov_unified():
 
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
-        opt.step(modulation_deltas=synapse_deltas)
+        opt_l1_recurrent.step(modulation_deltas=synapse_deltas)
+        opt_bridge1_2.step(modulation_deltas=synapse_deltas)
+        opt_l2_recurrent.step(modulation_deltas=synapse_deltas)
+        opt_bridge2_3.step(modulation_deltas=synapse_deltas)
+        opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
 
         if trial % 100 == 0:
-            w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()
-            diff = w[:25].mean() - w[25:50].mean()
-            w_max = layer.synapse.weight.data.abs().max().item()
+            v_mean = layer2.v.mean().item()
+            input_mean = input_current_2.mean().item()
+            print(f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}")
 
-            weight_diff.append(diff)
+            w = bridge2_3.weight.data[decision_neuron_idx].cpu().numpy()
+            w_max = bridge2_3.weight.data.abs().max().item()
+
             weight_max_history.append(w_max)
             recent_avg = (
                 sum(spike_counts[-10:]) / 10
                 if len(spike_counts) >= 10
                 else total_decision_spikes
             )
-            stats = opt.get_weight_stats()
+            stats = opt_l3_recurrent.get_weight_stats()
             print(
                 f"Trial {trial}: Pattern {'A' if is_pattern_A else 'B'}, "
                 f"Spikes: {total_decision_spikes:.0f}, "
                 f"Avg: {recent_avg:.1f}, "
                 f"Reward: {reward:+.1f}, "
-                f"W_diff: {diff:.4f}, "
                 f"W_max: {w_max:.4f}, "
                 f"Dopamine level:{dopamine.current_level:.4f}, "
                 f"Signal:{dopamine.signal():.4f}"
@@ -113,7 +191,6 @@ def test_pavlov_unified():
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 
     # 權重選擇性
-    axes[0, 0].plot(weight_diff, alpha=0.7)
     axes[0, 0].axhline(y=0, color="r", linestyle="--", alpha=0.5)
     axes[0, 0].set_title("Weight Selectivity (Should → Positive)")
     axes[0, 0].set_xlabel("Trials")
@@ -182,7 +259,6 @@ def test_pavlov_unified():
         f"Final Stats:\n\n"
         f"Avg Spikes: {sum(spike_counts)/len(spike_counts):.2f}\n"
         f"Spike Std: {torch.tensor(spike_counts).float().std():.2f}\n"
-        f"Final W_diff: {weight_diff[-1]:.4f}\n"
         f"Max Weight: {max(weight_max_history):.4f}\n"
         f"Positive Rewards: {sum(1 for r in rewards_history if r > 0)}\n"
         f"Negative Rewards: {sum(1 for r in rewards_history if r < 0)}",
@@ -206,8 +282,6 @@ def test_pavlov_unified():
     print(f"放電次數標準差: {torch.tensor(spike_counts).float().std():.2f}")
     print(f"最大放電次數: {max(spike_counts)}")
     print(f"最小放電次數: {min(spike_counts)}")
-    print(f"\n最終權重差異: {weight_diff[-1]:.4f}")
-    print(f"權重差異範圍: [{min(weight_diff):.4f}, {max(weight_diff):.4f}]")
     print(f"\n最大權重值: {max(weight_max_history):.4f} (限制: {max_weight})")
     print(f"\n總正獎勵: {sum(1 for r in rewards_history if r > 0)}")
     print(f"總負獎勵: {sum(1 for r in rewards_history if r < 0)}")
@@ -227,10 +301,10 @@ def test_pavlov_unified():
 def compute_reward(spikes, is_patternA):
     fired = spikes > 0
     if is_patternA:
-        return 1.0 if fired else -0.5
+        return 1.0 if fired else -0.3
     else:
-        return -1.0 if fired else 0.5
-
+        return -1.0 if fired else 0.3
+    
 
 if __name__ == "__main__":
     test_pavlov_unified()

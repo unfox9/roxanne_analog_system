@@ -42,7 +42,7 @@ class IzhikevichLayer(nn.Module):
         self.c_exc = c_exc
         self.d_exc = d_exc
 
-        self.a_inh = a_inh 
+        self.a_inh = a_inh
         self.b_inh = b_inh
         self.c_inh = c_inh
         self.d_inh = d_inh
@@ -92,7 +92,10 @@ class IzhikevichLayer(nn.Module):
                 weights = torch.rand(self.n_neurons, self.n_neurons, device=device)
                 weights.mul_(0.3 * max_weight)
                 weights.mul_(self.neuron_type.view(1, -1))
-                mask = torch.rand(self.n_neurons, self.n_neurons, device=device) < connection_prob
+                mask = (
+                    torch.rand(self.n_neurons, self.n_neurons, device=device)
+                    < connection_prob
+                )
                 mask.fill_diagonal_(False)
                 self.synapse.weight.data.copy_(weights * mask.float())
             elif strategy == "empty":
@@ -116,17 +119,17 @@ class IzhikevichLayer(nn.Module):
             self.reset_state(external_current.shape[0], external_current.device)
 
         current_bias = 0.0
-        current_d = self.d 
+        current_d = self.d
         current_b = self.b
         if neuromodulation_deltas:
-            if 'input_bias' in neuromodulation_deltas:
-                current_bias = neuromodulation_deltas['input_bias']
-            
-            if 'd' in neuromodulation_deltas:
-                current_d = self.d + neuromodulation_deltas['d']
-            
-            if 'b' in neuromodulation_deltas:
-                current_b = self.b + neuromodulation_deltas['b']
+            if "input_bias" in neuromodulation_deltas:
+                current_bias = neuromodulation_deltas["input_bias"]
+
+            if "d" in neuromodulation_deltas:
+                current_d = self.d + neuromodulation_deltas["d"]
+
+            if "b" in neuromodulation_deltas:
+                current_b = self.b + neuromodulation_deltas["b"]
 
         batch_size = external_current.shape[0]
 
@@ -195,7 +198,7 @@ class IzhikevichLayer(nn.Module):
                     :, exc_mask
                 ].clamp(min=0.0, max=max_exc_weight)
 
-            inh_mask = ~exc_mask  
+            inh_mask = ~exc_mask
             if inh_mask.any():
                 self.synapse.weight[:, inh_mask] = self.synapse.weight[
                     :, inh_mask

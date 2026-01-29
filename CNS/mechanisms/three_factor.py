@@ -8,6 +8,9 @@ class ThreeFactorOptimizer:
         layer,
         n_neurons,
         dopamine,
+        pre_layer=None,
+        post_layer=None,
+        synapse=None,
         lr=1e-3,
         theta_d=0.5,
         theta_p=1.2,
@@ -20,18 +23,24 @@ class ThreeFactorOptimizer:
         self.lr = lr
         self.max_weight = max_weight
 
+        self.post_layer = post_layer if post_layer is not None else layer
+        self.pre_layer = pre_layer if pre_layer is not None else layer
+        self.synapse = synapse if synapse is not None else layer.synapse
+
+        self.n_post = self.synapse.weight.shape[0]
+        self.n_pre = self.synapse.weight.shape[1]
+
         self.theta_d = theta_d
         self.theta_p = theta_p
 
         self.gamma_p = gamma_p
         self.gamma_d = gamma_d
 
-        self.eligibility_trace = torch.zeros(self.n_neurons, self.n_neurons).to(
+        self.eligibility_trace = torch.zeros(self.n_post, self.n_pre).to(
             layer.synapse.weight.device
         )
 
-        self.pre_trace = torch.zeros(self.n_neurons).to(layer.synapse.weight.device)
-
+        self.pre_trace = torch.zeros(self.n_pre).to(layer.synapse.weight.device)
         self.v_threshold_for_learning = -50.0
 
         # STDP parameters
@@ -43,23 +52,22 @@ class ThreeFactorOptimizer:
         self.dopamine = dopamine
         self.dopamine_level = 0.0
 
-
     def step(self, modulation_deltas=None):
         lr_scale = 1.0
         is_frozen = False
         if modulation_deltas is not None:
-            if 'lr_scale' in modulation_deltas:
-                lr_scale += modulation_deltas['lr_scale']
-            if 'learning_inhibition' in modulation_deltas:
-                if modulation_deltas['learning_inhibition'] > 0.5:
+            if "lr_scale" in modulation_deltas:
+                lr_scale += modulation_deltas["lr_scale"]
+            if "learning_inhibition" in modulation_deltas:
+                if modulation_deltas["learning_inhibition"] > 0.5:
                     is_frozen = True
         if is_frozen:
             return
 
         effective_lr = self.lr * lr_scale
 
-        current_spikes = self.layer.post_spike.detach()
-        ca = self.layer.calcium.mean(dim=0)
+        current_spikes = self.post_layer.post_spike.detach()
+        ca = self.post_layer.calcium.mean(dim=0)
 
         if current_spikes is None:
             return
@@ -72,7 +80,7 @@ class ThreeFactorOptimizer:
         ltp_mask = (ca > self.theta_p).float()
         ltd_mask = ((ca > self.theta_d) & (ca <= self.theta_p)).float()
 
-        pre_activity = self.layer.spike_buffer.mean(dim=2).mean(dim=0)
+        pre_activity = self.pre_layer.spike_buffer.mean(dim=2).mean(dim=0)
 
         # Pre Rate: (1, N)
         pre_rate_row = pre_activity.unsqueeze(0)
@@ -90,22 +98,33 @@ class ThreeFactorOptimizer:
 
         self.dopamine_level = self.dopamine.signal()
 
+        # Heterosynaptic Competition
+        post_activity = self.post_layer.calcium.mean(dim=0)
+        active_mask = (post_activity > 0.1).float()
+        competition_decay = (
+            0.001
+            * ((active_mask * post_activity).unsqueeze(1) ** 2)
+            * self.synapse.weight.data
+        )
+
         # dW = Learning_Rate * Dopamine * Eligibility
         if abs(self.dopamine_level) > 0.001:
-            delta_w = effective_lr * self.dopamine_level * self.eligibility_trace
+            delta_w = effective_lr * (
+                self.dopamine_level * self.eligibility_trace - competition_decay
+            )
 
             with torch.no_grad():
-                self.layer.synapse.weight += delta_w
-                self.layer.enforce_dale_principle(
-                    max_exc_weight=self.max_weight, max_inh_weight=self.max_weight
-                )
+                self.synapse.weight += delta_w
 
-        with torch.no_grad():
-            self.layer.synapse.weight.mul_(0.9999)
-
+                if self.synapse is self.post_layer.synapse:
+                    self.post_layer.enforce_dale_principle(
+                        max_exc_weight=self.max_weight, max_inh_weight=self.max_weight
+                    )
+                else:
+                    self.synapse.weight.clamp_(min=0.0, max=self.max_weight)
 
     def get_weight_stats(self):
-        w = self.layer.synapse.weight.data
+        w = self.synapse.weight.data
         return {
             "mean": w.mean().item(),
             "std": w.std().item(),
