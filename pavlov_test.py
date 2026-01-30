@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from CNS.mechanisms.snn_module import IzhikevichLayer
+from CNS.mechanisms.snn_network import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
 

@@ -6,7 +6,6 @@ class ThreeFactorOptimizer:
     def __init__(
         self,
         layer,
-        n_neurons,
         dopamine,
         pre_layer=None,
         post_layer=None,
@@ -18,14 +17,15 @@ class ThreeFactorOptimizer:
         gamma_d=0.5,
         max_weight=4.0,
     ):
-        self.n_neurons = n_neurons
         self.layer = layer
         self.lr = lr
         self.max_weight = max_weight
 
         self.post_layer = post_layer if post_layer is not None else layer
         self.pre_layer = pre_layer if pre_layer is not None else layer
-        self.synapse = synapse if synapse is not None else layer.synapse
+        self.synapse = synapse if synapse is not None else getattr(layer, 'synapse', None)
+        if self.synapse is None:
+             raise ValueError("Optimizer requires a valid Synapse object.")
 
         self.n_post = self.synapse.weight.shape[0]
         self.n_pre = self.synapse.weight.shape[1]
@@ -80,7 +80,7 @@ class ThreeFactorOptimizer:
         ltp_mask = (ca > self.theta_p).float()
         ltd_mask = ((ca > self.theta_d) & (ca <= self.theta_p)).float()
 
-        pre_activity = self.pre_layer.spike_buffer.mean(dim=2).mean(dim=0)
+        pre_activity = self.synapse.spike_buffer.mean(dim=2).mean(dim=0)
 
         # Pre Rate: (1, N)
         pre_rate_row = pre_activity.unsqueeze(0)
@@ -115,13 +115,11 @@ class ThreeFactorOptimizer:
 
             with torch.no_grad():
                 self.synapse.weight += delta_w
+                self.synapse.enforce_dale_principle()
 
-                if self.synapse is self.post_layer.synapse:
-                    self.post_layer.enforce_dale_principle(
-                        max_exc_weight=self.max_weight, max_inh_weight=self.max_weight
-                    )
-                else:
-                    self.synapse.weight.clamp_(min=0.0, max=self.max_weight)
+    def step_structure(self):
+        if hasattr(self.synapse, 'evolve_connectivity'):
+            self.synapse.evolve_connectivity()
 
     def get_weight_stats(self):
         w = self.synapse.weight.data

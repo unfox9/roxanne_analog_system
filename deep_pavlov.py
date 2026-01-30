@@ -1,18 +1,18 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from CNS.mechanisms.snn_module import IzhikevichLayer
+from CNS.mechanisms.snn_network import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
-from CNS.mechanisms.snn_projection import ConductanceSynapse
+from CNS.mechanisms.snn_synapse import Synapse
 
 
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 1024
-    n_neurons2 = 1024
-    n_neurons3 = 512
+    n_neurons1 = 512
+    n_neurons2 = 256
+    n_neurons3 = 128
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,27 +35,18 @@ def test_pavlov_unified():
     layer2.reset_state(batch_size=1, device=device)
     layer3.reset_state(batch_size=1, device=device)
 
-    layer1.init_weights(
-        strategy="random",
-        connection_prob=0.5,
-        max_weight=1.0,
-    )
-    layer2.init_weights(
-        strategy="random",
-        connection_prob=0.3,
-        max_weight=1.0,
-    )
-    layer3.init_weights(
-        strategy="random",
-        connection_prob=0.1,
-        max_weight=1.0,
-    )
     layer1.to(device)
     layer2.to(device)
     layer3.to(device)
 
-    bridge1_2 = ConductanceSynapse(n_neurons1, n_neurons2) 
-    bridge2_3 = ConductanceSynapse(n_neurons2, n_neurons3)
+    layer1_recurrent = Synapse(layer=layer1)
+    layer2_recurrent = Synapse(layer=layer2)
+    layer3_recurrent = Synapse(layer=layer3)
+    bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2)
+    bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3)
+    layer1_recurrent.to(device)
+    layer2_recurrent.to(device)
+    layer3_recurrent.to(device)
     bridge1_2.to(device)
     bridge2_3.to(device)
 
@@ -69,11 +60,9 @@ def test_pavlov_unified():
 
     # --- B. 訓練 Layer 1 -> Layer 2 的連接 (Feedforward) ---
     opt_bridge1_2 = ThreeFactorOptimizer(
-        layer=layer2,           
-        n_neurons=n_neurons2,    
         dopamine=dopamine,
-        pre_layer=layer1,        
-        post_layer=layer2,       
+        pre_layer=layer1,
+        post_layer=layer2,
         synapse=bridge1_2,
         lr=learning_rate,
         max_weight=max_weight,
@@ -82,7 +71,6 @@ def test_pavlov_unified():
     # --- C. 訓練 Layer 2 的內部循環 (Recurrent) ---
     opt_l2_recurrent = ThreeFactorOptimizer(
         layer=layer2,
-        n_neurons=n_neurons2,
         dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
@@ -90,20 +78,17 @@ def test_pavlov_unified():
 
     # --- D. 訓練 Layer 2 -> Layer 3 的連接 (Feedforward) ---
     opt_bridge2_3 = ThreeFactorOptimizer(
-        layer=layer3,
-        n_neurons=n_neurons3,
         dopamine=dopamine,
         pre_layer=layer2,
         post_layer=layer3,
         synapse=bridge2_3,
         lr=learning_rate,
-        max_weight=max_weight, 
+        max_weight=max_weight,
     )
 
     # --- E. 訓練 Layer 3 的內部循環 (Recurrent) ---
     opt_l3_recurrent = ThreeFactorOptimizer(
         layer=layer3,
-        n_neurons=n_neurons3,
         dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
@@ -142,11 +127,17 @@ def test_pavlov_unified():
             current_input = base_input + noise
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
-            spikes1, calcium1 = layer1(current_input, neuromodulation_deltas=neuron_deltas)
-            input_current_2 = bridge1_2(spikes1, layer2.v) 
-            spikes2, calcium2 = layer2(input_current_2, neuromodulation_deltas=neuron_deltas)
-            input_current_3 = bridge2_3(spikes2, layer3.v) 
-            spikes3, calcium3 = layer3(input_current_3, neuromodulation_deltas=neuron_deltas)
+            spikes1, calcium1 = layer1(
+                current_input, neuromodulation_deltas=neuron_deltas
+            )
+            input_current_2 = bridge1_2(spikes1, layer2.v)
+            spikes2, calcium2 = layer2(
+                input_current_2, neuromodulation_deltas=neuron_deltas
+            )
+            input_current_3 = bridge2_3(spikes2, layer3.v)
+            spikes3, calcium3 = layer3(
+                input_current_3, neuromodulation_deltas=neuron_deltas
+            )
 
             total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
 
@@ -165,7 +156,9 @@ def test_pavlov_unified():
         if trial % 100 == 0:
             v_mean = layer2.v.mean().item()
             input_mean = input_current_2.mean().item()
-            print(f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}")
+            print(
+                f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}"
+            )
 
             w = bridge2_3.weight.data[decision_neuron_idx].cpu().numpy()
             w_max = bridge2_3.weight.data.abs().max().item()
@@ -304,7 +297,7 @@ def compute_reward(spikes, is_patternA):
         return 1.0 if fired else -0.3
     else:
         return -1.0 if fired else 0.3
-    
+
 
 if __name__ == "__main__":
     test_pavlov_unified()

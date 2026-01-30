@@ -16,7 +16,6 @@ class IzhikevichLayer(nn.Module):
         b_inh=0.2,
         c_inh=-65.0,
         d_inh=2.0,
-        max_delay_ms=20,
         dt=1.0,
         refractory_steps=5,
     ):
@@ -24,7 +23,6 @@ class IzhikevichLayer(nn.Module):
 
         self.n_neurons = n_neurons
         self.dt = dt
-        self.max_delay_steps = int(max_delay_ms / dt)
         self.refractory_steps = refractory_steps
 
         # Dale's Principle
@@ -32,10 +30,9 @@ class IzhikevichLayer(nn.Module):
         self.n_exc = int(n_neurons * exc_ratio)
         self.n_inh = n_neurons - self.n_exc
 
-        self.neuron_type = torch.ones(n_neurons)
-        self.neuron_type[self.n_exc :] = -1.0
-
-        self.synapse = nn.Linear(n_neurons, n_neurons, bias=False)
+        neuron_type = torch.ones(n_neurons)
+        neuron_type[self.n_exc :] = -1.0
+        self.register_buffer('neuron_type', neuron_type)
 
         self.a_exc = a_exc
         self.b_exc = b_exc
@@ -67,8 +64,6 @@ class IzhikevichLayer(nn.Module):
         self.c = nn.Parameter(_c, requires_grad=False)
         self.d = nn.Parameter(_d, requires_grad=False)
 
-        self.axonal_delays = torch.randint(1, self.max_delay_steps, (n_neurons,))
-
         self.v = None
         self.u = None
 
@@ -78,45 +73,24 @@ class IzhikevichLayer(nn.Module):
         self.ca_pre = 0.0
         self.ca_spike = 1.0
 
-        # Shape: (Batch, Neurons, Time_Window)
-        self.spike_buffer = None
+        self.pre_spike = None
         self.post_spike = None
 
         self.refractory_counter = None
 
-    def init_weights(self, strategy="random", connection_prob=0.15, max_weight=1.0):
-        with torch.no_grad():
-            self.synapse.weight.fill_(0.0)
-            if strategy == "random":
-                device = self.synapse.weight.device
-                weights = torch.rand(self.n_neurons, self.n_neurons, device=device)
-                weights.mul_(0.3 * max_weight)
-                weights.mul_(self.neuron_type.view(1, -1))
-                mask = (
-                    torch.rand(self.n_neurons, self.n_neurons, device=device)
-                    < connection_prob
-                )
-                mask.fill_diagonal_(False)
-                self.synapse.weight.data.copy_(weights * mask.float())
-            elif strategy == "empty":
-                self.synapse.weight.data.fill_(0.0)
-
     def reset_state(self, batch_size, device):
-        self.v = torch.ones(batch_size, self.synapse.out_features).to(device) * -65.0
+        self.v = torch.ones(batch_size, self.n_neurons).to(device) * -65.0
         self.u = self.v * self.b
         self.calcium = torch.zeros(batch_size, self.n_neurons).to(device)
-        self.refractory_counter = torch.zeros(batch_size, self.synapse.out_features).to(
+        self.refractory_counter = torch.zeros(batch_size, self.n_neurons).to(
             device
         )
-        self.axonal_delays = self.axonal_delays.to(device)
-        self.post_spike = torch.zeros(batch_size, self.synapse.out_features).to(device)
-        self.spike_buffer = torch.zeros(
-            batch_size, self.n_neurons, self.max_delay_steps
-        ).to(device)
+        self.post_spike = torch.zeros(batch_size, self.n_neurons).to(device)
+        self.pre_spike = torch.zeros(batch_size, self.n_neurons).to(device)
 
-    def forward(self, external_current, neuromodulation_deltas=None):
+    def forward(self, total_input_current, neuromodulation_deltas=None):
         if self.v is None:
-            self.reset_state(external_current.shape[0], external_current.device)
+            self.reset_state(total_input_current.shape[0], total_input_current.device)
 
         current_bias = 0.0
         current_d = self.d
@@ -124,28 +98,14 @@ class IzhikevichLayer(nn.Module):
         if neuromodulation_deltas:
             if "input_bias" in neuromodulation_deltas:
                 current_bias = neuromodulation_deltas["input_bias"]
-
             if "d" in neuromodulation_deltas:
                 current_d = self.d + neuromodulation_deltas["d"]
-
             if "b" in neuromodulation_deltas:
                 current_b = self.b + neuromodulation_deltas["b"]
 
-        batch_size = external_current.shape[0]
+        I = total_input_current + current_bias
 
-        # delay_indices shape: (Batch, Neurons, 1)
-        delay_indices = self.axonal_delays.view(1, -1, 1).expand(batch_size, -1, 1)
-        delayed_spikes = torch.gather(self.spike_buffer, 2, delay_indices).squeeze(2)
-
-        # I_internal = Spikes @ Weights
-        internal_current = self.synapse(delayed_spikes)
-
-        I = external_current + internal_current
-
-        last_spike = self.spike_buffer[:, :, 0]
-
-        calcium_influx = last_spike * self.ca_spike
-        d_calcium = (-self.calcium / self.tau_ca) * self.dt + calcium_influx
+        d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.pre_spike
         self.calcium = self.calcium + d_calcium
 
         # v' = 0.04v^2 + 5v + 140 - u + I
@@ -177,29 +137,11 @@ class IzhikevichLayer(nn.Module):
         )
         self.refractory_counter = torch.clamp(self.refractory_counter, min=0)
 
-        # buffer[:, :, 1:] = buffer[:, :, :-1]
-        # buffer[:, :, 0] = new_spikes
-        self.spike_buffer = torch.roll(self.spike_buffer, shifts=1, dims=2)
-        self.spike_buffer[:, :, 0] = self.post_spike
+        self.pre_spike = self.post_spike
 
         self.v = self.v.detach()
         self.u = self.u.detach()
         self.calcium = self.calcium.detach()
-        self.spike_buffer = self.spike_buffer.detach()
         self.refractory_counter = self.refractory_counter.detach()
 
         return self.post_spike, self.calcium
-
-    def enforce_dale_principle(self, max_exc_weight=1.0, max_inh_weight=1.0):
-        with torch.no_grad():
-            exc_mask = self.neuron_type > 0
-            if exc_mask.any():
-                self.synapse.weight[:, exc_mask] = self.synapse.weight[
-                    :, exc_mask
-                ].clamp(min=0.0, max=max_exc_weight)
-
-            inh_mask = ~exc_mask
-            if inh_mask.any():
-                self.synapse.weight[:, inh_mask] = self.synapse.weight[
-                    :, inh_mask
-                ].clamp(min=-max_inh_weight, max=0.0)
