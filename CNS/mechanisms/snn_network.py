@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from CNS.mechanisms.snn_synapse import Synapse 
 
 
 class IzhikevichLayer(nn.Module):
     def __init__(
         self,
         n_neurons,
+        synapse=None,
         exc_ratio=0.8,
         a_exc=0.02,
         b_exc=0.2,
@@ -78,6 +80,8 @@ class IzhikevichLayer(nn.Module):
 
         self.refractory_counter = None
 
+        self.synapse = synapse
+
     def reset_state(self, batch_size, device):
         self.v = torch.ones(batch_size, self.n_neurons).to(device) * -65.0
         self.u = self.v * self.b
@@ -87,12 +91,12 @@ class IzhikevichLayer(nn.Module):
         )
         self.post_spike = torch.zeros(batch_size, self.n_neurons).to(device)
         self.pre_spike = torch.zeros(batch_size, self.n_neurons).to(device)
-
+        
     def forward(self, total_input_current, neuromodulation_deltas=None):
         if self.v is None:
             self.reset_state(total_input_current.shape[0], total_input_current.device)
 
-        current_bias = 0.0
+        current_bias = 10.0
         current_d = self.d
         current_b = self.b
         if neuromodulation_deltas:
@@ -104,6 +108,11 @@ class IzhikevichLayer(nn.Module):
                 current_b = self.b + neuromodulation_deltas["b"]
 
         I = total_input_current + current_bias
+
+        if self.synapse:
+            recurrent_current = self.synapse(self.pre_spike, self.v)
+            I = I + recurrent_current
+        
 
         d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.pre_spike
         self.calcium = self.calcium + d_calcium

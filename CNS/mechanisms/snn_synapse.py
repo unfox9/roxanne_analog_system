@@ -8,9 +8,9 @@ class Synapse(nn.Module):
                  layer=None,
                  pre_layer=None,
                  post_layer=None,
-                 density=0.1,
+                 density=0.3,
                  dt=1.0, 
-                 tau_g=0.5, 
+                 tau_g=5.0, 
                  max_delay_ms=20,
                  max_weight=1.0,
                  enable_plasticity=True,
@@ -18,17 +18,19 @@ class Synapse(nn.Module):
                  sprouting_prob=0.01
                  ):
         super().__init__()
-        self.layer = layer
-        self.n_neurons = layer.n_neurons
-        self.pre_layer =  pre_layer if pre_layer is not None else self.layer
-        self.post_layer = post_layer if post_layer is not None else self.layer
+        _layer = layer
+        _pre = pre_layer if pre_layer is not None else _layer
+        _post = post_layer if post_layer is not None else _layer
 
-        self.n_pre = self.pre_layer.n_neurons
-        self.n_post = self.post_layer.n_neurons
+        if _pre is None or _post is None:
+             raise ValueError("Synapse 初始化失敗：必須提供 layer 或 pre_layer/post_layer")
+
+        self.n_pre = _pre.n_neurons
+        self.n_post = _post.n_neurons
+        
+        self.register_buffer('neuron_type', _pre.neuron_type.clone())
 
         self.max_weight = max_weight
-
-        self.register_buffer('neuron_type', self.pre_layer.neuron_type.clone())
 
         self.weight = nn.Parameter(torch.empty(self.n_post, self.n_pre))
         nn.init.xavier_uniform_(self.weight)
@@ -51,12 +53,14 @@ class Synapse(nn.Module):
         self.eneable_plasticity = enable_plasticity
         self.pruning_prob = sprouting_prob
         self.pruning_threshold = pruning_threshold
+        self.target_density = density
 
         self.I = None
 
         self.enforce_dale_principle()
 
     def reset_state(self, batch_size, device):
+        self.g = torch.zeros(batch_size, self.n_post, device=device)
         self.spike_buffer = torch.zeros(
             batch_size, self.n_pre, self.max_delay_steps, device=device
         )
@@ -83,13 +87,13 @@ class Synapse(nn.Module):
                     empty_indices = torch.nonzero(self.mask == 0, as_tuple=False)
 
                     if empty_indices.size(0) > n_to_sprout:
-                        idx = torch.randperm(empty_indices(0))[:n_to_sprout]
+                        idx = torch.randperm(empty_indices.size(0))[:n_to_sprout]
                         new_conns = empty_indices[idx]
 
                         rows = new_conns[:, 0]
                         cols = new_conns[:, 1]
 
-                        current_types = self.pre_neuron_type[cols]
+                        current_types = self.neuron_type[cols]
 
                         base_val = 0.01 * self.max_weight
                         noise = torch.rand(n_to_sprout, device=self.weight.device) * 0.005
@@ -123,6 +127,7 @@ class Synapse(nn.Module):
         g_influx = torch.matmul(delayed_spikes, effective_weight.T)
 
         self.g = self.g * self.decay + g_influx
+        self.g = self.g.detach()
 
         I_total = torch.zeros_like(v_post)
 
@@ -135,6 +140,8 @@ class Synapse(nn.Module):
             I_total[inh_mask] = (-self.g[inh_mask]) * (-80.0 - v_post[inh_mask])
 
         self.I = I_total
+
+        self.I = self.I.detach()
         return self.I
     
     def enforce_dale_principle(self):

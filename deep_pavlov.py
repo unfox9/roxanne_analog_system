@@ -10,20 +10,18 @@ from CNS.mechanisms.snn_synapse import Synapse
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 512
-    n_neurons2 = 256
-    n_neurons3 = 128
+    n_neurons1 = 2048
+    n_neurons2 = 1024
+    n_neurons3 = 512
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
     input_gain = 10.0
-    noise_level = 5.0
-    learning_rate = 0.0001
-    max_weight = 1.0
-
-    bridge_gain = 10.0
+    noise_level = 10.0
+    learning_rate = 0.001
+    max_weight = 4.0
 
     dopamine = DopamineSystem(dt=1.0, base_level=0.1)
 
@@ -31,34 +29,42 @@ def test_pavlov_unified():
     layer2 = IzhikevichLayer(n_neurons2)
     layer3 = IzhikevichLayer(n_neurons3)
 
-    layer1.reset_state(batch_size=1, device=device)
-    layer2.reset_state(batch_size=1, device=device)
-    layer3.reset_state(batch_size=1, device=device)
-
-    layer1.to(device)
-    layer2.to(device)
-    layer3.to(device)
-
     layer1_recurrent = Synapse(layer=layer1)
     layer2_recurrent = Synapse(layer=layer2)
     layer3_recurrent = Synapse(layer=layer3)
     bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2)
     bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3)
+
+    layer1.to(device)
+    layer2.to(device)
+    layer3.to(device)
     layer1_recurrent.to(device)
     layer2_recurrent.to(device)
     layer3_recurrent.to(device)
     bridge1_2.to(device)
     bridge2_3.to(device)
 
+    layer1.synapse = layer1_recurrent
+    layer2.synapse = layer2_recurrent
+    layer3.synapse = layer3_recurrent
+
+    layer1.reset_state(batch_size=1, device=device)
+    layer2.reset_state(batch_size=1, device=device)
+    layer3.reset_state(batch_size=1, device=device)
+    layer1_recurrent.reset_state(batch_size=1, device=device)
+    layer2_recurrent.reset_state(batch_size=1, device=device)
+    layer3_recurrent.reset_state(batch_size=1, device=device)
+    bridge1_2.reset_state(batch_size=1, device=device)
+    bridge2_3.reset_state(batch_size=1, device=device)
+
     opt_l1_recurrent = ThreeFactorOptimizer(
         layer=layer1,
-        n_neurons=n_neurons1,
+        synapse=layer1_recurrent,
         dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
     )
 
-    # --- B. 訓練 Layer 1 -> Layer 2 的連接 (Feedforward) ---
     opt_bridge1_2 = ThreeFactorOptimizer(
         dopamine=dopamine,
         pre_layer=layer1,
@@ -68,15 +74,14 @@ def test_pavlov_unified():
         max_weight=max_weight,
     )
 
-    # --- C. 訓練 Layer 2 的內部循環 (Recurrent) ---
     opt_l2_recurrent = ThreeFactorOptimizer(
         layer=layer2,
+        synapse=layer2_recurrent,
         dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
     )
 
-    # --- D. 訓練 Layer 2 -> Layer 3 的連接 (Feedforward) ---
     opt_bridge2_3 = ThreeFactorOptimizer(
         dopamine=dopamine,
         pre_layer=layer2,
@@ -86,21 +91,13 @@ def test_pavlov_unified():
         max_weight=max_weight,
     )
 
-    # --- E. 訓練 Layer 3 的內部循環 (Recurrent) ---
     opt_l3_recurrent = ThreeFactorOptimizer(
         layer=layer3,
+        synapse=layer3_recurrent,
         dopamine=dopamine,
         lr=learning_rate,
         max_weight=max_weight,
     )
-
-    try:
-        layer1 = torch.compile(layer1)
-        layer2 = torch.compile(layer2)
-        layer3 = torch.compile(layer3)
-        print("✅ 已啟用 torch.compile 加速")
-    except Exception as e:
-        print("⚠️ 無法啟用 torch.compile，將使用一般模式:", e)
 
     pattern_A_mask = torch.zeros(n_neurons1)
     pattern_A_mask[:25] = 1.0
@@ -138,20 +135,17 @@ def test_pavlov_unified():
             spikes3, calcium3 = layer3(
                 input_current_3, neuromodulation_deltas=neuron_deltas
             )
-
+            opt_l1_recurrent.step(modulation_deltas=synapse_deltas)
+            opt_bridge1_2.step(modulation_deltas=synapse_deltas)
+            opt_l2_recurrent.step(modulation_deltas=synapse_deltas)
+            opt_bridge2_3.step(modulation_deltas=synapse_deltas)
+            opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
             total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
-
-        reward = compute_reward(total_decision_spikes, is_pattern_A)
-
-        dopamine.update(influx=reward)
+            reward = compute_reward(total_decision_spikes, is_pattern_A)
+            dopamine.update(influx=reward)
 
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
-        opt_l1_recurrent.step(modulation_deltas=synapse_deltas)
-        opt_bridge1_2.step(modulation_deltas=synapse_deltas)
-        opt_l2_recurrent.step(modulation_deltas=synapse_deltas)
-        opt_bridge2_3.step(modulation_deltas=synapse_deltas)
-        opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
 
         if trial % 100 == 0:
             v_mean = layer2.v.mean().item()

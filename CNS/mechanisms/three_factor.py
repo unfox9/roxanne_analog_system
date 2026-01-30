@@ -5,8 +5,8 @@ import torch.nn as nn
 class ThreeFactorOptimizer:
     def __init__(
         self,
-        layer,
         dopamine,
+        layer=None,
         pre_layer=None,
         post_layer=None,
         synapse=None,
@@ -37,10 +37,10 @@ class ThreeFactorOptimizer:
         self.gamma_d = gamma_d
 
         self.eligibility_trace = torch.zeros(self.n_post, self.n_pre).to(
-            layer.synapse.weight.device
+            synapse.weight.device
         )
 
-        self.pre_trace = torch.zeros(self.n_pre).to(layer.synapse.weight.device)
+        self.pre_trace = torch.zeros(self.n_pre).to(synapse.weight.device)
         self.v_threshold_for_learning = -50.0
 
         # STDP parameters

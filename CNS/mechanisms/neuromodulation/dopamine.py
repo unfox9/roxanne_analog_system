@@ -29,7 +29,7 @@ class DopamineSystem:
 
     def update(self, influx):
         self.phasic_da = self.phasic_da * self.phasic_decay + influx
-        self.phasic_da = np.clip(self.phasic_da, -5.0, 5.0)
+        self.phasic_da = np.clip(self.phasic_da, -1.0, 1.0)
 
         self.tonic_da += (self.base_level - self.tonic_da) * (1.0 - self.tonic_decay)
 
