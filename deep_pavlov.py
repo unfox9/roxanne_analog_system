@@ -16,7 +16,7 @@ def test_pavlov_unified():
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    save_path = "result_unified.png"
+    save_path = "deep_snn.png"
 
     input_gain = 10.0
     noise_level = 10.0
