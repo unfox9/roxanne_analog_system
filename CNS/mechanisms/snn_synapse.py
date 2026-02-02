@@ -36,6 +36,7 @@ class Synapse(nn.Module):
 
         self.weight = nn.Parameter(torch.empty(self.n_post, self.n_pre))
         nn.init.xavier_uniform_(self.weight)
+        self.weight.data *= 0.1
 
         mask = (torch.rand(self.n_post, self.n_pre) < density).float()
         self.register_buffer('mask', mask)
@@ -134,16 +135,16 @@ class Synapse(nn.Module):
 
         g_exc_influx = torch.matmul(delayed_spikes, w_exc.T)
         g_inh_influx = torch.matmul(delayed_spikes, w_inh.T)
-
-        self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=5)
-        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=-5, max=0)
+        self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=50)
+        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=-50, max=0)
 
         g_inh_abs = self.g_inh.abs()
         I_exc = self.g_exc * (self.e_exc - v_post)
         I_inh = g_inh_abs * (self.e_inh - v_post)
         
         self.I = I_exc + I_inh
-        
+        self.I = torch.clamp(self.I, min=-50.0, max=50.0)
+
         self.I = self.I.detach()
         self.g_exc = self.g_exc.detach()
         self.g_inh = self.g_inh.detach()

@@ -18,7 +18,7 @@ class DopamineSystem:
         self.neuron_effects = {}
         self.synapse_effects = {}
 
-        self.add_neuron_effect("input_bias", coefficient=1.0)
+        self.add_neuron_effect("input_bias", coefficient=10.0)
         self.add_synapse_effect("lr_scale", coefficient=1.0)
 
     def add_neuron_effect(self, param_name, coefficient):
@@ -29,7 +29,7 @@ class DopamineSystem:
 
     def update(self, influx):
         self.phasic_da = self.phasic_da * self.phasic_decay + influx
-        self.phasic_da = np.clip(self.phasic_da, -1.0, 1.0)
+        self.phasic_da = np.clip(self.phasic_da, -4.0, 4.0)
 
         self.tonic_da += (self.base_level - self.tonic_da) * (1.0 - self.tonic_decay)
 

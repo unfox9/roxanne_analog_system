@@ -64,7 +64,8 @@ class ThreeFactorOptimizer:
 
         # Calcium
         ca = self.post_layer.calcium.detach().mean(dim=0)
-        normalized = (ca - self.theta_d) / (self.theta_p - self.theta_d)
+        epsilon = 1e-6
+        normalized = (ca - self.theta_d) / (self.theta_p - self.theta_d + epsilon)
         ca_modulation = torch.tanh(2 * (normalized - 0.5))
         ca_modulation = ca_modulation.unsqueeze(1)
 
@@ -82,8 +83,8 @@ class ThreeFactorOptimizer:
         if post_spike is None:
             return
         ltp_matrix = torch.einsum('bi, bj -> ij', post_spike, self.pre_trace)
-        ltd_matirx = torch.einsum('bi, bj -> ij', self.post_trace, pre_spike)
-        stdp_update = (self.A_plus * ltp_matrix - self.A_minus * ltd_matirx) / batch_size
+        ltd_matrix = torch.einsum('bi, bj -> ij', self.post_trace, pre_spike)
+        stdp_update = (self.A_plus * ltp_matrix - self.A_minus * ltd_matrix) / batch_size
 
         # E(t) = E(t-1) * decay + STDP(t)
         decay = 0.95

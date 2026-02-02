@@ -10,7 +10,7 @@ from CNS.mechanisms.snn_synapse import Synapse
 def test_pavlov_unified():
     print("開始巴甫洛夫測試...")
 
-    n_neurons = 100
+    n_neurons = 1024
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,9 +22,10 @@ def test_pavlov_unified():
     max_weight = 1.0
 
     layer = IzhikevichLayer(n_neurons, refractory_steps=5)
-    layer.to(device)
 
     synapse = Synapse(layer)
+
+    layer.to(device)
     synapse.to(device)
 
     layer.synapse = synapse

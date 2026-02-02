@@ -10,16 +10,16 @@ from CNS.mechanisms.snn_synapse import Synapse
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 256
-    n_neurons2 = 128
-    n_neurons3 = 64
+    n_neurons1 = 4096
+    n_neurons2 = 2048
+    n_neurons3 = 1024
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "deep_snn.png"
 
-    input_gain = 10.0
-    noise_level = 10.0
+    input_gain = 100.0
+    noise_level = 2.0
     learning_rate = 0.001
     max_weight = 1.0
 
@@ -141,15 +141,16 @@ def test_pavlov_unified():
             opt_bridge2_3.step(modulation_deltas=synapse_deltas)
             opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
             total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
-            reward = compute_reward(total_decision_spikes, is_pattern_A)
-            dopamine.update(influx=reward)
-
+            
+        reward = compute_reward(total_decision_spikes, is_pattern_A)
+        dopamine.update(influx=reward)
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
 
         if trial % 100 == 0:
             v_mean = layer2.v.mean().item()
             input_mean = input_current_2.mean().item()
+            v_mean = layer2.v
             print(
                 f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}"
             )
