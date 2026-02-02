@@ -95,8 +95,9 @@ class IzhikevichLayer(nn.Module):
     def forward(self, total_input_current, neuromodulation_deltas=None):
         if self.v is None:
             self.reset_state(total_input_current.shape[0], total_input_current.device)
+        prev_spike = self.pre_spike if self.pre_spike is not None else torch.zeros_like(self.post_spike)
 
-        current_bias = 10.0
+        current_bias = 0.0
         current_d = self.d
         current_b = self.b
         if neuromodulation_deltas:
@@ -110,17 +111,19 @@ class IzhikevichLayer(nn.Module):
         I = total_input_current + current_bias
 
         if self.synapse:
-            recurrent_current = self.synapse(self.pre_spike, self.v)
+            recurrent_current = self.synapse(prev_spike, self.v)
             I = I + recurrent_current
         
 
-        d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.pre_spike
+        d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.post_spike * self.ca_spike
         self.calcium = self.calcium + d_calcium
 
         # v' = 0.04v^2 + 5v + 140 - u + I
-        dv = 0.04 * self.v**2 + 5 * self.v + 140 - self.u + I
+        v_safe = torch.clamp(self.v, min=-100.0, max=30.0)
+        dv = 0.04 * v_safe**2 + 5 * v_safe + 140 - self.u + I
+        dv = torch.clamp(dv, min=-100.0, max=30.0)
         v_next = self.v + self.dt * dv
-        v_next = torch.clamp(v_next, min=-100.0, max=100.0)
+        v_next = torch.clamp(v_next, min=-100.0, max=30.0)
 
         # u' = a(bv - u)
         du = self.a * (current_b * self.v - self.u)
@@ -146,11 +149,13 @@ class IzhikevichLayer(nn.Module):
         )
         self.refractory_counter = torch.clamp(self.refractory_counter, min=0)
 
-        self.pre_spike = self.post_spike
+        self.pre_spike = self.post_spike.clone()
 
         self.v = self.v.detach()
         self.u = self.u.detach()
         self.calcium = self.calcium.detach()
         self.refractory_counter = self.refractory_counter.detach()
+        self.post_spike = self.post_spike.detach()
+        self.pre_spike = self.pre_spike.detach()
 
         return self.post_spike, self.calcium

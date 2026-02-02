@@ -4,48 +4,42 @@ import matplotlib.pyplot as plt
 from CNS.mechanisms.snn_network import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
+from CNS.mechanisms.snn_synapse import Synapse
 
 
 def test_pavlov_unified():
     print("開始巴甫洛夫測試...")
 
-    n_neurons = 512
+    n_neurons = 100
     decision_neuron_idx = 0
-    n_steps = 2000
+    n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
-    input_gain = 50.0
+    input_gain = 10.0
     noise_level = 2.0
     learning_rate = 0.001
     max_weight = 1.0
 
     layer = IzhikevichLayer(n_neurons, refractory_steps=5)
-
-    layer.init_weights(
-        strategy="random",
-        connection_prob=0.5,
-        max_weight=1.0,
-    )
     layer.to(device)
 
-    layer.reset_state(batch_size=1, device=device)
+    synapse = Synapse(layer)
+    synapse.to(device)
+
+    layer.synapse = synapse
+
+    synapse.reset_state(batch_size=1, device=device)
 
     dopamine = DopamineSystem(dt=1.0, base_level=0.1)
 
     opt = ThreeFactorOptimizer(
-        layer,
-        n_neurons,
-        dopamine,
+        layer=layer,
+        dopamine=dopamine,
+        synapse=synapse,
         lr=learning_rate,
         max_weight=max_weight,
     )
-
-    try:
-        layer = torch.compile(layer)
-        print("✅ 已啟用 torch.compile 加速")
-    except Exception as e:
-        print("⚠️ 無法啟用 torch.compile，將使用一般模式:", e)
 
     pattern_A_mask = torch.zeros(n_neurons)
     pattern_A_mask[:25] = 1.0
@@ -74,7 +68,7 @@ def test_pavlov_unified():
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
             spikes, calcium = layer(current_input, neuromodulation_deltas=neuron_deltas)
-
+            opt.step(modulation_deltas=synapse_deltas)
             total_decision_spikes += layer.post_spike[:, decision_neuron_idx].sum()
 
         reward = compute_reward(total_decision_spikes, is_pattern_A)
@@ -83,7 +77,6 @@ def test_pavlov_unified():
 
         spike_counts.append(total_decision_spikes.item())
         rewards_history.append(reward)
-        opt.step(modulation_deltas=synapse_deltas)
 
         if trial % 100 == 0:
             w = layer.synapse.weight.data[decision_neuron_idx].cpu().numpy()

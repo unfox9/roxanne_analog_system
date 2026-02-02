@@ -10,9 +10,9 @@ from CNS.mechanisms.snn_synapse import Synapse
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 2048
-    n_neurons2 = 1024
-    n_neurons3 = 512
+    n_neurons1 = 256
+    n_neurons2 = 128
+    n_neurons3 = 64
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,7 +21,7 @@ def test_pavlov_unified():
     input_gain = 10.0
     noise_level = 10.0
     learning_rate = 0.001
-    max_weight = 4.0
+    max_weight = 1.0
 
     dopamine = DopamineSystem(dt=1.0, base_level=0.1)
 

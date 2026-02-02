@@ -11,6 +11,8 @@ class Synapse(nn.Module):
                  density=0.3,
                  dt=1.0, 
                  tau_g=5.0, 
+                 e_exc=0.0,
+                 e_inh= -80.0,
                  max_delay_ms=20,
                  max_weight=1.0,
                  enable_plasticity=True,
@@ -48,9 +50,13 @@ class Synapse(nn.Module):
         self.tau_g = tau_g
         self.decay = np.exp(-dt / tau_g)
 
-        self.g = None
+        self.e_exc = e_exc
+        self.e_inh = e_inh
 
-        self.eneable_plasticity = enable_plasticity
+        self.g_exc = None
+        self.g_inh = None
+
+        self.enable_plasticity = enable_plasticity
         self.pruning_prob = sprouting_prob
         self.pruning_threshold = pruning_threshold
         self.target_density = density
@@ -60,7 +66,8 @@ class Synapse(nn.Module):
         self.enforce_dale_principle()
 
     def reset_state(self, batch_size, device):
-        self.g = torch.zeros(batch_size, self.n_post, device=device)
+        self.g_exc = torch.zeros(batch_size, self.n_post, device=device)
+        self.g_inh = torch.zeros(batch_size, self.n_post, device=device)
         self.spike_buffer = torch.zeros(
             batch_size, self.n_pre, self.max_delay_steps, device=device
         )
@@ -116,32 +123,31 @@ class Synapse(nn.Module):
 
         self.spike_buffer[:, :, self.buffer_ptr] = pre_spikes
 
+        w_exc = torch.clamp(self.weight * self.mask, min=0)
+        w_inh = torch.clamp(self.weight * self.mask, max=0)
+
         read_indices = (self.buffer_ptr - self.delays) % self.max_delay_steps
         idx_tensor = read_indices.view(1, -1, 1).expand(batch_size, -1, 1)
         delayed_spikes = torch.gather(self.spike_buffer, 2, idx_tensor).squeeze(2)
 
         self.buffer_ptr = (self.buffer_ptr + 1) % self.max_delay_steps
 
-        effective_weight = self.weight * self.mask
+        g_exc_influx = torch.matmul(delayed_spikes, w_exc.T)
+        g_inh_influx = torch.matmul(delayed_spikes, w_inh.T)
 
-        g_influx = torch.matmul(delayed_spikes, effective_weight.T)
+        self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=5)
+        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=-5, max=0)
 
-        self.g = self.g * self.decay + g_influx
-        self.g = self.g.detach()
-
-        I_total = torch.zeros_like(v_post)
-
-        exc_mask = (self.g > 0)
-        if exc_mask.any():
-            I_total[exc_mask] = self.g[exc_mask] * (0.0 - v_post[exc_mask])
-
-        inh_mask = (self.g < 0)
-        if inh_mask.any():
-            I_total[inh_mask] = (-self.g[inh_mask]) * (-80.0 - v_post[inh_mask])
-
-        self.I = I_total
-
+        g_inh_abs = self.g_inh.abs()
+        I_exc = self.g_exc * (self.e_exc - v_post)
+        I_inh = g_inh_abs * (self.e_inh - v_post)
+        
+        self.I = I_exc + I_inh
+        
         self.I = self.I.detach()
+        self.g_exc = self.g_exc.detach()
+        self.g_inh = self.g_inh.detach()
+        self.spike_buffer = self.spike_buffer.detach()
         return self.I
     
     def enforce_dale_principle(self):

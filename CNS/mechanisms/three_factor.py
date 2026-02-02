@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 
 
 class ThreeFactorOptimizer:
@@ -13,13 +14,13 @@ class ThreeFactorOptimizer:
         lr=1e-3,
         theta_d=0.5,
         theta_p=1.2,
-        gamma_p=1.0,
-        gamma_d=0.5,
         max_weight=4.0,
+        dt=1.0
     ):
         self.layer = layer
         self.lr = lr
         self.max_weight = max_weight
+        self.dt = dt
 
         self.post_layer = post_layer if post_layer is not None else layer
         self.pre_layer = pre_layer if pre_layer is not None else layer
@@ -33,21 +34,17 @@ class ThreeFactorOptimizer:
         self.theta_d = theta_d
         self.theta_p = theta_p
 
-        self.gamma_p = gamma_p
-        self.gamma_d = gamma_d
-
         self.eligibility_trace = torch.zeros(self.n_post, self.n_pre).to(
             synapse.weight.device
         )
 
-        self.pre_trace = torch.zeros(self.n_pre).to(synapse.weight.device)
-        self.v_threshold_for_learning = -50.0
-
+        self.pre_trace = None
+        self.post_trace = None
         # STDP parameters
         self.tau_plus = 20.0
         self.tau_minus = 20.0
-        self.A_plus = 1.0
-        self.A_minus = 0.5
+        self.A_plus = 0.01
+        self.A_minus = 0.012
 
         self.dopamine = dopamine
         self.dopamine_level = 0.0
@@ -63,39 +60,34 @@ class ThreeFactorOptimizer:
                     is_frozen = True
         if is_frozen:
             return
-
         effective_lr = self.lr * lr_scale
 
-        current_spikes = self.post_layer.post_spike.detach()
-        ca = self.post_layer.calcium.mean(dim=0)
+        # Calcium
+        ca = self.post_layer.calcium.detach().mean(dim=0)
+        normalized = (ca - self.theta_d) / (self.theta_p - self.theta_d)
+        ca_modulation = torch.tanh(2 * (normalized - 0.5))
+        ca_modulation = ca_modulation.unsqueeze(1)
 
-        if current_spikes is None:
+        # STDP update
+        pre_spike = self.pre_layer.post_spike.detach()
+        post_spike = self.post_layer.post_spike.detach()
+        batch_size = pre_spike.shape[0]
+        if self.pre_trace is None or self.pre_trace.shape[0] != batch_size:
+            self.pre_trace = torch.zeros_like(pre_spike)
+            self.post_trace = torch.zeros_like(post_spike)
+        self.pre_trace *= np.exp(-self.dt / self.tau_plus)
+        self.post_trace *= np.exp(-self.dt / self.tau_minus)
+        self.pre_trace += pre_spike
+        self.post_trace += post_spike
+        if post_spike is None:
             return
-
-        if self.pre_trace.device != current_spikes.device:
-            self.pre_trace = self.pre_trace.to(current_spikes.device)
-        if self.eligibility_trace.device != current_spikes.device:
-            self.eligibility_trace = self.eligibility_trace.to(current_spikes.device)
-
-        ltp_mask = (ca > self.theta_p).float()
-        ltd_mask = ((ca > self.theta_d) & (ca <= self.theta_p)).float()
-
-        pre_activity = self.synapse.spike_buffer.mean(dim=2).mean(dim=0)
-
-        # Pre Rate: (1, N)
-        pre_rate_row = pre_activity.unsqueeze(0)
-
-        ltp_mask_col = ltp_mask.unsqueeze(1)
-        ltd_mask_col = ltd_mask.unsqueeze(1)
-
-        delta_ltp = torch.matmul(ltp_mask_col, pre_rate_row) * self.gamma_p
-        delta_ltd = torch.matmul(ltd_mask_col, pre_rate_row) * self.gamma_d
-
-        stdp_update = delta_ltp - delta_ltd
+        ltp_matrix = torch.einsum('bi, bj -> ij', post_spike, self.pre_trace)
+        ltd_matirx = torch.einsum('bi, bj -> ij', self.post_trace, pre_spike)
+        stdp_update = (self.A_plus * ltp_matrix - self.A_minus * ltd_matirx) / batch_size
 
         # E(t) = E(t-1) * decay + STDP(t)
-        self.eligibility_trace = self.eligibility_trace * 0.95 + stdp_update
-
+        decay = 0.95
+        self.eligibility_trace = self.eligibility_trace * decay + ca_modulation * stdp_update
         self.dopamine_level = self.dopamine.signal()
 
         # Heterosynaptic Competition
