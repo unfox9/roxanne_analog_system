@@ -150,7 +150,6 @@ def test_pavlov_unified():
         if trial % 100 == 0:
             v_mean = layer2.v.mean().item()
             input_mean = input_current_2.mean().item()
-            v_mean = layer2.v
             print(
                 f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}"
             )
