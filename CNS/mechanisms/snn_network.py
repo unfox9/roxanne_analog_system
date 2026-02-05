@@ -81,10 +81,13 @@ class IzhikevichLayer(nn.Module):
         self.refractory_counter = None
 
         self.synapse = synapse
+        
+        self.I = None
 
     def reset_state(self, batch_size, device):
         self.v = torch.ones(batch_size, self.n_neurons).to(device) * -65.0
         self.u = self.v * self.b
+        self.I = torch.zeros(batch_size, self.n_neurons).to(device)
         self.calcium = torch.zeros(batch_size, self.n_neurons).to(device)
         self.refractory_counter = torch.zeros(batch_size, self.n_neurons).to(
             device
@@ -108,16 +111,16 @@ class IzhikevichLayer(nn.Module):
             if "b" in neuromodulation_deltas:
                 current_b = self.b + neuromodulation_deltas["b"]
 
-        I = total_input_current + current_bias
+        self.I = total_input_current + current_bias
         if self.synapse:
             recurrent_current = self.synapse(prev_spike, self.v)
-            I = I + recurrent_current
+            self.I = self.I + recurrent_current
 
         d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.post_spike * self.ca_spike
         self.calcium = self.calcium + d_calcium
 
         # v' = 0.04v^2 + 5v + 140 - u + I
-        dv = 0.04 * self.v**2 + 5 * self.v + 140 - self.u + I
+        dv = 0.04 * self.v**2 + 5 * self.v + 140 - self.u + self.I
         v_next = self.v + self.dt * dv
         v_next = torch.clamp(v_next, min=-100.0, max=100.0)
 

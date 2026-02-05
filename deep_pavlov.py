@@ -5,14 +5,15 @@ from CNS.mechanisms.snn_network import IzhikevichLayer
 from CNS.mechanisms.three_factor import ThreeFactorOptimizer
 from CNS.mechanisms.neuromodulation.dopamine import DopamineSystem
 from CNS.mechanisms.snn_synapse import Synapse
+import numpy as np
 
 
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 4096
-    n_neurons2 = 2048
-    n_neurons3 = 1024
+    n_neurons1 = 512
+    n_neurons2 = 256
+    n_neurons3 = 128
     decision_neuron_idx = 0
     n_steps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -106,9 +107,51 @@ def test_pavlov_unified():
 
     trial_patterns = (torch.rand(n_steps, device=device) > 0.5).float()
 
-    spike_counts = []
-    rewards_history = []
-    weight_max_history = []
+    debug_neurons = {
+        'layer1': [0, 25, 50], 
+        'layer2': [0, 64, 128, 192, 255],
+        'layer3': [0, 32, 64, 96, 127] 
+    }
+
+    detailed_traces = {
+        'trial': [],
+        'pattern':[],
+        # Layer 1
+        'l1_v': {i: [] for i in debug_neurons['layer1']},
+        'l1_input': {i: [] for i in debug_neurons['layer1']},
+        'l1_spikes': {i: [] for i in debug_neurons['layer1']},
+        'l1_calcium': {i: [] for i in debug_neurons['layer1']},
+        # Layer 2
+        'l2_v': {i: [] for i in debug_neurons['layer2']},
+        'l2_input': {i: [] for i in debug_neurons['layer2']},
+        'l2_spikes': {i: [] for i in debug_neurons['layer2']},
+        'l2_calcium': {i: [] for i in debug_neurons['layer2']},
+        # Layer 3
+        'l3_v': {i: [] for i in debug_neurons['layer3']},
+        'l3_input': {i: [] for i in debug_neurons['layer3']},
+        'l3_spikes': {i: [] for i in debug_neurons['layer3']},
+        'l3_calcium': {i: [] for i in debug_neurons['layer3']},
+        # 突觸統計
+        'bridge1_2_current_mean': [],
+        'bridge1_2_current_std': [],
+        'bridge1_2_active_ratio': [],
+        
+        'bridge2_3_current_mean': [],
+        'bridge2_3_current_std': [],
+        'bridge2_3_active_ratio': [],
+
+        'bridge2_3_to_decision': [],
+
+        # 權重
+        'bridge2_3_weight_to_decision': [],
+        'bridge2_3_to_decision': [],
+        'bridge2_3_weight_max': [],
+        'bridge2_3_weight_mean': [],
+        
+        # 多巴胺
+        'dopamine_level': [],
+        'dopamine_signal': [],
+    }
 
     for trial in range(n_steps):
         is_pattern_A = trial_patterns[trial] == 1.0
@@ -118,9 +161,10 @@ def test_pavlov_unified():
 
         total_decision_spikes = torch.tensor(0.0, device=device)
 
+        trial_snapshots = []
+
         for t in range(50):
             noise = torch.randn_like(base_input) * noise_level
-
             current_input = base_input + noise
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
@@ -135,154 +179,178 @@ def test_pavlov_unified():
             spikes3, calcium3 = layer3(
                 input_current_3, neuromodulation_deltas=neuron_deltas
             )
+
+            if t % 10 == 0 or t == 49:
+                snapshot = {
+                    't': t,
+                    'l1_v': layer1.v[0, debug_neurons['layer1']].cpu().numpy(),
+                    'l1_spikes': spikes1[0, debug_neurons['layer1']].cpu().numpy(),
+                    'l2_v': layer2.v[0, debug_neurons['layer2']].cpu().numpy(),
+                    'l2_input': input_current_2[0, debug_neurons['layer2']].cpu().numpy(),
+                    'l3_v': layer3.v[0, debug_neurons['layer3']].cpu().numpy(),
+                    'bridge1_2_current': input_current_2[0].cpu().numpy(),
+                }
+                trial_snapshots.append(snapshot)
+
             opt_l1_recurrent.step(modulation_deltas=synapse_deltas)
             opt_bridge1_2.step(modulation_deltas=synapse_deltas)
             opt_l2_recurrent.step(modulation_deltas=synapse_deltas)
             opt_bridge2_3.step(modulation_deltas=synapse_deltas)
             opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
+
             total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
             
         reward = compute_reward(total_decision_spikes, is_pattern_A)
         dopamine.update(influx=reward)
-        spike_counts.append(total_decision_spikes.item())
-        rewards_history.append(reward)
 
         if trial % 100 == 0:
-            v_mean = layer2.v.mean().item()
-            input_mean = input_current_2.mean().item()
-            print(
-                f"DEBUG: L2 Input Current: {input_mean:.2f}, L2 Voltage: {v_mean:.2f}"
+            detailed_traces['trial'].append(trial)
+
+            for i in debug_neurons['layer1']:
+                detailed_traces['l1_v'][i].append(layer1.v[0, i].item())
+                detailed_traces['l1_input'][i].append(layer1.I[0, i].item())
+                detailed_traces['l1_spikes'][i].append(spikes1[0, i].item())
+
+            for i in debug_neurons['layer2']:
+                detailed_traces['l2_v'][i].append(layer2.v[0, i].item())
+                detailed_traces['l2_input'][i].append(layer2.I[0, i].item())
+                detailed_traces['l2_spikes'][i].append(spikes2[0, i].item())
+                detailed_traces['l2_calcium'][i].append(calcium2[0, i].item())
+
+            for i in debug_neurons['layer3']:
+                detailed_traces['l3_v'][i].append(layer3.v[0, i].item())
+                detailed_traces['l3_input'][i].append(layer3.I[0, i].item())
+                detailed_traces['l3_spikes'][i].append(spikes3[0, i].item())
+                detailed_traces['l3_calcium'][i].append(calcium3[0, i].item())
+
+            bridge1_2_currents = input_current_2[0].cpu()
+            detailed_traces['bridge1_2_current_mean'].append(bridge1_2_currents.mean().item())
+            detailed_traces['bridge1_2_current_std'].append(bridge1_2_currents.std().item())
+            detailed_traces['bridge1_2_active_ratio'].append(
+                (bridge1_2_currents.abs() > 0.1).float().mean().item()
             )
 
-            w = bridge2_3.weight.data[decision_neuron_idx].cpu().numpy()
-            w_max = bridge2_3.weight.data.abs().max().item()
-
-            weight_max_history.append(w_max)
-            recent_avg = (
-                sum(spike_counts[-10:]) / 10
-                if len(spike_counts) >= 10
-                else total_decision_spikes
-            )
-            stats = opt_l3_recurrent.get_weight_stats()
-            print(
-                f"Trial {trial}: Pattern {'A' if is_pattern_A else 'B'}, "
-                f"Spikes: {total_decision_spikes:.0f}, "
-                f"Avg: {recent_avg:.1f}, "
-                f"Reward: {reward:+.1f}, "
-                f"W_max: {w_max:.4f}, "
-                f"Dopamine level:{dopamine.current_level:.4f}, "
-                f"Signal:{dopamine.signal():.4f}"
+            bridge2_3_currents = input_current_3[0].cpu()
+            detailed_traces['bridge2_3_current_mean'].append(bridge2_3_currents.mean().item())
+            detailed_traces['bridge2_3_current_std'].append(bridge2_3_currents.std().item())
+            detailed_traces['bridge2_3_active_ratio'].append(
+                (bridge2_3_currents.abs() > 0.1).float().mean().item()
             )
 
-    # === 改進的可視化 ===
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+            w_to_decision = bridge2_3.weight.data[decision_neuron_idx].cpu().numpy()
+            detailed_traces['bridge2_3_weight_to_decision'].append(w_to_decision.copy())
+            detailed_traces['bridge2_3_weight_max'].append(
+                bridge2_3.weight.data.abs().max().item()
+            )
+            detailed_traces['bridge2_3_weight_mean'].append(
+                bridge2_3.weight.data.abs().mean().item()
+            )
 
-    # 權重選擇性
-    axes[0, 0].axhline(y=0, color="r", linestyle="--", alpha=0.5)
-    axes[0, 0].set_title("Weight Selectivity (Should → Positive)")
-    axes[0, 0].set_xlabel("Trials")
-    axes[0, 0].set_ylabel("W(A) - W(B)")
-    axes[0, 0].grid(True, alpha=0.3)
+            detailed_traces['dopamine_level'].append(dopamine.current_level)
+            detailed_traces['dopamine_signal'].append(dopamine.signal())
 
-    # 放電活動
-    axes[0, 1].plot(spike_counts, alpha=0.7)
-    axes[0, 1].axhline(y=50, color="r", linestyle="--", alpha=0.5, label="Max (bad)")
-    axes[0, 1].axhline(y=5, color="g", linestyle="--", alpha=0.5, label="Target")
-    axes[0, 1].set_title("Spike Activity (Should be < 50)")
-    axes[0, 1].set_xlabel("Trials")
-    axes[0, 1].set_ylabel("Spike Count")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
+            print(f"\n=== Trial {trial} ===")
+            print(f"Pattern: {'A' if is_pattern_A else 'B'}")
+            print(f"Decision Spikes: {total_decision_spikes:.0f}")
 
-    # 權重最大值追蹤
-    axes[0, 2].plot(weight_max_history, alpha=0.7)
-    axes[0, 2].axhline(
-        y=max_weight, color="r", linestyle="--", label=f"Limit: {max_weight}"
+            print(f"\n--- Layer 1 ---")
+            print(f"Layer 1 Input Current:")
+            print(f"  Mean: {layer1.I.mean():.2f}")
+            print(f"  Std: {layer1.I.std():.2f}")
+            print(f"  Active ratio: {(layer1.I.abs() > 0.1).float().mean():.2%}")
+            print(f"\nLayer 1 Voltages (selected):")
+            for i in debug_neurons['layer1']:
+                print(f"  Neuron {i}: {layer1.v[0, i]:.2f}")
+
+            print(f"\n--- Layer 2 ---")
+            print(f"Layer 2 Input Current:")
+            print(f"  Mean: {layer2.I.mean():.2f}")
+            print(f"  Std: {layer2.I.std():.2f}")
+            print(f"  Active ratio: {(layer2.I.abs() > 0.1).float().mean():.2%}")
+            print(f"\nLayer 2 Voltages (selected):")
+            for i in debug_neurons['layer2']:
+                print(f"  Neuron {i}: {layer2.v[0, i]:.2f}")
+
+            print(f"\n--- Layer 3 ---")
+            print(f"Layer 3 Input Current:")
+            print(f"  Mean: {layer3.I.mean():.2f}")
+            print(f"  Std: {layer3.I.std():.2f}")
+            print(f"  Active ratio: {(layer3.I.abs() > 0.1).float().mean():.2%}")
+            print(f"\nLayer 3 Voltages (selected):")
+            for i in debug_neurons['layer3']:
+                print(f"  Neuron {i}: {layer3.v[0, i]:.2f}")
+            
+
+    plot_detailed_debug(detailed_traces, debug_neurons, save_path=save_path)
+
+
+def plot_detailed_debug(traces, debug_neurons, save_path):
+    fig, axes = plt.subplots(3, 3, figsize=(18, 12))
+    
+    trials = traces['trial']
+    
+    # Row 1: 神經元電壓軌跡
+    for idx, neuron_id in enumerate(debug_neurons['layer1'][:3]):
+        axes[0, idx].plot(trials, traces['l1_v'][neuron_id])
+        axes[0, idx].set_title(f'Layer 1 Neuron {neuron_id} Voltage')
+        axes[0, idx].set_xlabel('Trial')
+        axes[0, idx].set_ylabel('Voltage (mV)')
+        axes[0, idx].grid(True, alpha=0.3)
+    
+    # Row 2: Layer 2 輸入電流與電壓
+    axes[1, 0].plot(trials, traces['bridge1_2_current_mean'], label='Mean')
+    axes[1, 0].fill_between(
+        trials,
+        np.array(traces['bridge1_2_current_mean']) - np.array(traces['bridge1_2_current_std']),
+        np.array(traces['bridge1_2_current_mean']) + np.array(traces['bridge1_2_current_std']),
+        alpha=0.3
     )
-    axes[0, 2].set_title("Max Weight (Should Stay ≤ Limit)")
-    axes[0, 2].set_xlabel("Trials")
-    axes[0, 2].set_ylabel("Max |Weight|")
-    axes[0, 2].legend()
-    axes[0, 2].grid(True, alpha=0.3)
-
-    # 獎勵歷史
-    axes[1, 0].plot(rewards_history, alpha=0.3, color="gray")
-    # 移動平均
-    window = 50
-    if len(rewards_history) >= window:
-        moving_avg = [
-            sum(rewards_history[i : i + window]) / window
-            for i in range(len(rewards_history) - window)
-        ]
-        axes[1, 0].plot(
-            range(window, len(rewards_history)),
-            moving_avg,
-            color="red",
-            linewidth=2,
-            label="Moving Avg (50)",
-        )
-        axes[1, 0].legend()
-    axes[1, 0].axhline(y=0, color="k", linestyle="--", alpha=0.3)
-    axes[1, 0].set_title("Reward Signal")
-    axes[1, 0].set_xlabel("Trials")
-    axes[1, 0].set_ylabel("Reward")
+    axes[1, 0].set_title('Bridge 1→2 Current Distribution')
+    axes[1, 0].legend()
     axes[1, 0].grid(True, alpha=0.3)
-
-    # 放電分佈直方圖
-    axes[1, 1].hist(spike_counts, bins=20, edgecolor="black", alpha=0.7)
-    axes[1, 1].axvline(
-        x=50, color="r", linestyle="--", label="Problematic (always firing)"
-    )
-    axes[1, 1].set_title("Spike Count Distribution")
-    axes[1, 1].set_xlabel("Spike Count")
-    axes[1, 1].set_ylabel("Frequency")
-    axes[1, 1].legend()
+    
+    axes[1, 1].plot(trials, traces['bridge1_2_active_ratio'])
+    axes[1, 1].set_title('Active Synapse Ratio (1→2)')
+    axes[1, 1].set_ylabel('Ratio')
     axes[1, 1].grid(True, alpha=0.3)
-
-    # 多巴胺水平（如果有記錄）
-    axes[1, 2].text(
-        0.5,
-        0.5,
-        f"Final Stats:\n\n"
-        f"Avg Spikes: {sum(spike_counts)/len(spike_counts):.2f}\n"
-        f"Spike Std: {torch.tensor(spike_counts).float().std():.2f}\n"
-        f"Max Weight: {max(weight_max_history):.4f}\n"
-        f"Positive Rewards: {sum(1 for r in rewards_history if r > 0)}\n"
-        f"Negative Rewards: {sum(1 for r in rewards_history if r < 0)}",
-        ha="center",
-        va="center",
-        fontsize=12,
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-    )
-    axes[1, 2].axis("off")
-    axes[1, 2].set_title("Summary")
-
+    
+    # Layer 2 代表性神經元
+    for neuron_id in debug_neurons['layer2']:
+        axes[1, 2].plot(trials, traces['l2_v'][neuron_id], label=f'N{neuron_id}')
+    axes[1, 2].set_title('Layer 2 Selected Neurons Voltage')
+    axes[1, 2].legend()
+    axes[1, 2].grid(True, alpha=0.3)
+    
+    # Row 3: 權重演化
+    weight_history = np.array(traces['bridge2_3_weight_to_decision'])
+    # 選幾個代表性的突觸
+    sample_synapses = [0, 10, 50, 100, 128]
+    for syn_id in sample_synapses:
+        if syn_id < weight_history.shape[1]:
+            axes[2, 0].plot(trials, weight_history[:, syn_id], label=f'Syn {syn_id}')
+    axes[2, 0].set_title('Weights to Decision Neuron')
+    axes[2, 0].legend()
+    axes[2, 0].grid(True, alpha=0.3)
+    
+    # 權重分布熱圖
+    im = axes[2, 1].imshow(weight_history.T, aspect='auto', cmap='RdBu_r', 
+                           interpolation='nearest')
+    axes[2, 1].set_title('Weight Evolution Heatmap')
+    axes[2, 1].set_xlabel('Trial (sampled)')
+    axes[2, 1].set_ylabel('Synapse ID')
+    plt.colorbar(im, ax=axes[2, 1])
+    
+    # 最終權重分布直方圖
+    final_weights = weight_history[-1]
+    axes[2, 2].hist(final_weights, bins=30, edgecolor='black', alpha=0.7)
+    axes[2, 2].axvline(x=0, color='r', linestyle='--')
+    axes[2, 2].set_title('Final Weight Distribution')
+    axes[2, 2].set_xlabel('Weight Value')
+    axes[2, 2].grid(True, alpha=0.3)
+    
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
-    print(f"\n結果已儲存至 {save_path}")
-
-    # === 詳細統計分析 ===
-    print("\n" + "=" * 50)
-    print("統計分析")
-    print("=" * 50)
-    print(f"平均放電次數: {sum(spike_counts)/len(spike_counts):.2f}")
-    print(f"放電次數標準差: {torch.tensor(spike_counts).float().std():.2f}")
-    print(f"最大放電次數: {max(spike_counts)}")
-    print(f"最小放電次數: {min(spike_counts)}")
-    print(f"\n最大權重值: {max(weight_max_history):.4f} (限制: {max_weight})")
-    print(f"\n總正獎勵: {sum(1 for r in rewards_history if r > 0)}")
-    print(f"總負獎勵: {sum(1 for r in rewards_history if r < 0)}")
-    print(f"總零獎勵: {sum(1 for r in rewards_history if r == 0)}")
-
-    # 檢查是否有問題
-    if max(spike_counts) == 50:
-        print("\n⚠️  警告：仍有神經元每步都在放電 (50/50)")
-        print("   建議：進一步降低 input_gain 或增加 refractory_steps")
-    if max(weight_max_history) > max_weight * 1.1:
-        print(
-            f"\n⚠️  警告：權重超過限制 ({max(weight_max_history):.4f} > {max_weight})"
-        )
-        print("   建議：檢查 enforce_dale_principle() 是否正確執行")
+    print(f"Debug traces saved to {save_path}")
 
 
 def compute_reward(spikes, is_patternA):
