@@ -35,8 +35,12 @@ class Synapse(nn.Module):
         self.max_weight = max_weight
 
         self.weight = nn.Parameter(torch.empty(self.n_post, self.n_pre))
-        nn.init.xavier_uniform_(self.weight)
-        self.weight.data *= 0.1
+        effective_n = max(1.0, self.n_pre * density)
+        w_scale = 10.0 / np.sqrt(effective_n)
+        nn.init.uniform_(self.weight, a=0.0, b=w_scale)
+        with torch.no_grad():
+            signs = torch.sign(self.neuron_type).unsqueeze(0)
+            self.weight.data *= signs
 
         mask = (torch.rand(self.n_post, self.n_pre) < density).float()
         self.register_buffer('mask', mask)
@@ -58,7 +62,7 @@ class Synapse(nn.Module):
         self.g_inh = None
 
         self.enable_plasticity = enable_plasticity
-        self.pruning_prob = sprouting_prob
+        self.sprouting_prob = sprouting_prob
         self.pruning_threshold = pruning_threshold
         self.target_density = density
 
@@ -124,23 +128,28 @@ class Synapse(nn.Module):
 
         self.spike_buffer[:, :, self.buffer_ptr] = pre_spikes
 
-        w_exc = torch.clamp(self.weight * self.mask, min=0)
-        w_inh = torch.clamp(self.weight * self.mask, max=0)
-
         read_indices = (self.buffer_ptr - self.delays) % self.max_delay_steps
         idx_tensor = read_indices.view(1, -1, 1).expand(batch_size, -1, 1)
         delayed_spikes = torch.gather(self.spike_buffer, 2, idx_tensor).squeeze(2)
 
         self.buffer_ptr = (self.buffer_ptr + 1) % self.max_delay_steps
 
-        g_exc_influx = torch.matmul(delayed_spikes, w_exc.T)
-        g_inh_influx = torch.matmul(delayed_spikes, w_inh.T)
+        w_abs = self.weight.abs() * self.mask
+
+        exc_mask = (self.neuron_type > 0).unsqueeze(0)
+        inh_mask = (self.neuron_type < 0).unsqueeze(0)
+
+        w_exc_magnitude = w_abs * exc_mask
+        w_inh_magnitude = w_abs * inh_mask
+
+        g_exc_influx = torch.matmul(delayed_spikes, w_exc_magnitude.T)
+        g_inh_influx = torch.matmul(delayed_spikes, w_inh_magnitude.T)
         self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=50)
         self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=-50, max=0)
 
-        g_inh_abs = self.g_inh.abs()
+        
         I_exc = self.g_exc * (self.e_exc - v_post)
-        I_inh = g_inh_abs * (self.e_inh - v_post)
+        I_inh = self.g_inh * (self.e_inh - v_post)
         
         self.I = I_exc + I_inh
         self.I = torch.clamp(self.I, min=-50.0, max=50.0)

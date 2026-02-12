@@ -18,7 +18,7 @@ class DopamineSystem:
         self.neuron_effects = {}
         self.synapse_effects = {}
 
-        self.add_neuron_effect("input_bias", coefficient=0.0)
+        self.add_neuron_effect("input_bias", coefficient=10.0)
         self.add_synapse_effect("lr_scale", coefficient=0.0)
 
     def add_neuron_effect(self, param_name, coefficient):

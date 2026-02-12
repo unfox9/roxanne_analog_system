@@ -80,6 +80,15 @@ class IzhikevichLayer(nn.Module):
 
         self.refractory_counter = None
 
+        self.neuro_sensitivity = nn.Parameter(
+            torch.rand(n_neurons) * 1.5 + 0.1,
+            requires_grad=False
+        )
+        self.noise_level = nn.Parameter(
+            torch.rand(n_neurons) * 2.0 + 1.0,
+            requires_grad=False
+        )
+
         self.synapse = synapse
         
         self.I = None
@@ -100,18 +109,22 @@ class IzhikevichLayer(nn.Module):
             self.reset_state(total_input_current.shape[0], total_input_current.device)
         prev_spike = self.pre_spike if self.pre_spike is not None else torch.zeros_like(self.post_spike)
 
-        current_bias = 10.0
+        bias_effect = 5.0
         current_d = self.d
         current_b = self.b
         if neuromodulation_deltas:
             if "input_bias" in neuromodulation_deltas:
-                current_bias = neuromodulation_deltas["input_bias"]
+                global_bias = neuromodulation_deltas["input_bias"]
+                bias_effect = global_bias * self.neuro_sensitivity.to(total_input_current.device)
             if "d" in neuromodulation_deltas:
                 current_d = self.d + neuromodulation_deltas["d"]
             if "b" in neuromodulation_deltas:
                 current_b = self.b + neuromodulation_deltas["b"]
 
-        self.I = total_input_current + current_bias
+        batch_size = total_input_current.shape[0]
+        background_noise = torch.randn_like(total_input_current) * self.noise_level
+
+        self.I = total_input_current + bias_effect + background_noise
         if self.synapse:
             recurrent_current = self.synapse(prev_spike, self.v)
             self.I = self.I + recurrent_current
