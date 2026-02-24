@@ -14,15 +14,14 @@ def test_pavlov_unified():
     n_neurons1 = 512
     n_neurons2 = 256
     n_neurons3 = 128
-    decision_neuron_idx = 0
-    n_steps = 1000
+    n_steps = 2000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "deep_snn.png"
 
-    input_gain = 100.0
-    noise_level = 2.0
-    learning_rate = 0.001
-    max_weight = 1.0
+    input_gain = 5.0
+    noise_level = 0.0
+    learning_rate = 0.01
+    max_weight = 2.0
 
     dopamine = DopamineSystem(dt=1.0, base_level=0.1)
 
@@ -30,11 +29,14 @@ def test_pavlov_unified():
     layer2 = IzhikevichLayer(n_neurons2)
     layer3 = IzhikevichLayer(n_neurons3)
 
-    layer1_recurrent = Synapse(layer=layer1)
-    layer2_recurrent = Synapse(layer=layer2)
-    layer3_recurrent = Synapse(layer=layer3)
-    bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2)
-    bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3)
+    density=0.3
+    layer1_recurrent = Synapse(layer=layer1, density=density)
+    layer2_recurrent = Synapse(layer=layer2, density=density)
+    layer3_recurrent = Synapse(layer=layer3, density=density)
+    bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2, density=density)
+    bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3, density=density)
+    bridge2_1 = Synapse(pre_layer=layer2, post_layer=layer1, density=density)
+    bridge3_2 = Synapse(pre_layer=layer3, post_layer=layer2, density=density)
 
     layer1.to(device)
     layer2.to(device)
@@ -44,6 +46,8 @@ def test_pavlov_unified():
     layer3_recurrent.to(device)
     bridge1_2.to(device)
     bridge2_3.to(device)
+    bridge2_1.to(device)
+    bridge3_2.to(device)
 
     layer1.synapse = layer1_recurrent
     layer2.synapse = layer2_recurrent
@@ -57,6 +61,8 @@ def test_pavlov_unified():
     layer3_recurrent.reset_state(batch_size=1, device=device)
     bridge1_2.reset_state(batch_size=1, device=device)
     bridge2_3.reset_state(batch_size=1, device=device)
+    bridge2_1.reset_state(batch_size=1, device=device)
+    bridge3_2.reset_state(batch_size=1, device=device)
 
     opt_l1_recurrent = ThreeFactorOptimizer(
         layer=layer1,
@@ -101,16 +107,22 @@ def test_pavlov_unified():
     )
 
     pattern_A_mask = torch.zeros(n_neurons1)
-    pattern_A_mask[:25] = 1.0
     pattern_B_mask = torch.zeros(n_neurons1)
-    pattern_B_mask[25:50] = 1.0
+    pattern_A_mask[:200] = 1.0
+    pattern_A_mask[200:400] = 0.05  
+    pattern_B_mask[:200] = 0.05
+    pattern_B_mask[200:400] = 1.0
+
+    n_exc = int(n_neurons3 * 0.8)  
+    group_A = slice(0, n_exc // 2)      
+    group_B = slice(n_exc // 2, n_exc)  
 
     trial_patterns = (torch.rand(n_steps, device=device) > 0.5).float()
 
     debug_neurons = {
-        'layer1': [0, 25, 50], 
-        'layer2': [0, 64, 128, 192, 255],
-        'layer3': [0, 32, 64, 96, 127] 
+        'layer1': np.linspace(0, n_neurons1 - 1, 3, dtype=int).tolist(),
+        'layer2': np.linspace(0, n_neurons2 - 1, 5, dtype=int).tolist(),
+        'layer3': np.linspace(0, n_neurons3 - 1, 5, dtype=int).tolist()
     }
 
     detailed_traces = {
@@ -140,10 +152,9 @@ def test_pavlov_unified():
         'bridge2_3_current_std': [],
         'bridge2_3_active_ratio': [],
 
-        'bridge2_3_to_decision': [],
-
         # 權重
-        'bridge2_3_weight_to_decision': [],
+        'weight_to_groupA_mean': [],
+        'weight_to_groupB_mean': [],
         'bridge2_3_to_decision': [],
         'bridge2_3_weight_max': [],
         'bridge2_3_weight_mean': [],
@@ -163,22 +174,32 @@ def test_pavlov_unified():
 
         trial_snapshots = []
 
+        spikes2_prev = torch.zeros(1, n_neurons2, device=device)
+        spikes3_prev = torch.zeros(1, n_neurons3, device=device)
+
         for t in range(50):
             noise = torch.randn_like(base_input) * noise_level
             current_input = base_input + noise
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
+
+            fb_1 = bridge2_1(spikes2_prev, layer1.v)
+            fb_2 = bridge3_2(spikes3_prev, layer2.v)
+
             spikes1, calcium1 = layer1(
-                current_input, neuromodulation_deltas=neuron_deltas
+                current_input + fb_1, neuromodulation_deltas=neuron_deltas
             )
             input_current_2 = bridge1_2(spikes1, layer2.v)
             spikes2, calcium2 = layer2(
-                input_current_2, neuromodulation_deltas=neuron_deltas
+                input_current_2 + fb_2, neuromodulation_deltas=neuron_deltas
             )
             input_current_3 = bridge2_3(spikes2, layer3.v)
             spikes3, calcium3 = layer3(
                 input_current_3, neuromodulation_deltas=neuron_deltas
             )
+
+            spikes2_prev = spikes2.detach()
+            spikes3_prev = spikes3.detach()
 
             if t % 10 == 0 or t == 49:
                 snapshot = {
@@ -197,11 +218,17 @@ def test_pavlov_unified():
             opt_l2_recurrent.step(modulation_deltas=synapse_deltas)
             opt_bridge2_3.step(modulation_deltas=synapse_deltas)
             opt_l3_recurrent.step(modulation_deltas=synapse_deltas)
-
-            total_decision_spikes += spikes3[:, decision_neuron_idx].sum()
             
-        reward = compute_reward(total_decision_spikes, is_pattern_A)
+            spikes_A = spikes3[:, group_A].sum()
+            spikes_B = spikes3[:, group_B].sum()
+            total_decision_spikes += spikes3.sum()
+            
+        rate_A, rate_B, winner, corret, reward = compute_reward(spikes_A, spikes_B, is_pattern_A, n_exc)
         dopamine.update(influx=reward)
+        da_signal = dopamine.signal()  
+        for opt in [opt_l1_recurrent, opt_bridge1_2, opt_l2_recurrent,
+                    opt_bridge2_3, opt_l3_recurrent]:
+            opt.step(da_override=da_signal)
 
         if trial % 100 == 0:
             detailed_traces['trial'].append(trial)
@@ -237,8 +264,10 @@ def test_pavlov_unified():
                 (bridge2_3_currents.abs() > 0.1).float().mean().item()
             )
 
-            w_to_decision = bridge2_3.weight.data[decision_neuron_idx].cpu().numpy()
-            detailed_traces['bridge2_3_weight_to_decision'].append(w_to_decision.copy())
+            w_to_groupA = bridge2_3.weight.data[group_A].mean(dim=0).cpu().numpy()
+            w_to_groupB = bridge2_3.weight.data[group_B].mean(dim=0).cpu().numpy()
+            detailed_traces['weight_to_groupA_mean'].append(w_to_groupA.mean().item())
+            detailed_traces['weight_to_groupB_mean'].append(w_to_groupB.mean().item())
             detailed_traces['bridge2_3_weight_max'].append(
                 bridge2_3.weight.data.abs().max().item()
             )
@@ -249,9 +278,12 @@ def test_pavlov_unified():
             detailed_traces['dopamine_level'].append(dopamine.current_level)
             detailed_traces['dopamine_signal'].append(dopamine.signal())
 
+            
             print(f"\n=== Trial {trial} ===")
             print(f"Pattern: {'A' if is_pattern_A else 'B'}")
             print(f"Decision Spikes: {total_decision_spikes:.0f}")
+            print(f"Group A rate: {rate_A:.4f} | Group B rate: {rate_B:.4f}")
+            print(f"Winner: {winner} | Correct: {corret}")
 
             print(f"\n--- Layer 1 ---")
             print(f"Layer 1 Input Current:")
@@ -280,7 +312,10 @@ def test_pavlov_unified():
             for i in debug_neurons['layer3']:
                 print(f"  Neuron {i}: {layer3.v[0, i]:.2f}")
             
-
+            print(f"\n--- Dopamine ---")
+            print(f"  Dopamine level:{dopamine.current_level:.4f}")
+            print(f"  Signal:{dopamine.signal():.4f}")
+            
     plot_detailed_debug(detailed_traces, debug_neurons, save_path=save_path)
 
 
@@ -320,32 +355,30 @@ def plot_detailed_debug(traces, debug_neurons, save_path):
     axes[1, 2].set_title('Layer 2 Selected Neurons Voltage')
     axes[1, 2].legend()
     axes[1, 2].grid(True, alpha=0.3)
-    
-    # Row 3: 權重演化
-    weight_history = np.array(traces['bridge2_3_weight_to_decision'])
-    # 選幾個代表性的突觸
-    sample_synapses = [0, 10, 50, 100, 128]
-    for syn_id in sample_synapses:
-        if syn_id < weight_history.shape[1]:
-            axes[2, 0].plot(trials, weight_history[:, syn_id], label=f'Syn {syn_id}')
-    axes[2, 0].set_title('Weights to Decision Neuron')
+  
+    # axes[2, 0] - Group A vs B 的 mean 權重演化
+    axes[2, 0].plot(trials, traces['weight_to_groupA_mean'], 
+                    color='red', label='Group A')
+    axes[2, 0].plot(trials, traces['weight_to_groupB_mean'], 
+                    color='blue', label='Group B')
+    axes[2, 0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    axes[2, 0].set_title('Bridge2→3 Weight: Group A vs B')
     axes[2, 0].legend()
     axes[2, 0].grid(True, alpha=0.3)
     
-    # 權重分布熱圖
-    im = axes[2, 1].imshow(weight_history.T, aspect='auto', cmap='RdBu_r', 
-                           interpolation='nearest')
-    axes[2, 1].set_title('Weight Evolution Heatmap')
-    axes[2, 1].set_xlabel('Trial (sampled)')
-    axes[2, 1].set_ylabel('Synapse ID')
-    plt.colorbar(im, ax=axes[2, 1])
+    # axes[2, 1] - 兩者的差值，更直觀看分化
+    diff = np.array(traces['weight_to_groupA_mean']) - np.array(traces['weight_to_groupB_mean'])
+    axes[2, 1].plot(trials, diff, color='purple')
+    axes[2, 1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    axes[2, 1].set_title('Group A - Group B (Differentiation)')
+    axes[2, 1].grid(True, alpha=0.3)
     
-    # 最終權重分布直方圖
-    final_weights = weight_history[-1]
-    axes[2, 2].hist(final_weights, bins=30, edgecolor='black', alpha=0.7)
-    axes[2, 2].axvline(x=0, color='r', linestyle='--')
-    axes[2, 2].set_title('Final Weight Distribution')
-    axes[2, 2].set_xlabel('Weight Value')
+    # axes[2, 2] - dopamine 信號，確認 reward 是否正常
+    axes[2, 2].plot(trials, traces['dopamine_level'], label='level')
+    axes[2, 2].plot(trials, traces['dopamine_signal'], label='signal')
+    axes[2, 2].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    axes[2, 2].set_title('Dopamine')
+    axes[2, 2].legend()
     axes[2, 2].grid(True, alpha=0.3)
     
     plt.tight_layout()
@@ -353,12 +386,20 @@ def plot_detailed_debug(traces, debug_neurons, save_path):
     print(f"Debug traces saved to {save_path}")
 
 
-def compute_reward(spikes, is_patternA):
-    fired = spikes > 0
-    if is_patternA:
-        return 1.0 if fired else -0.3
-    else:
-        return -1.0 if fired else 0.3
+def compute_reward(spikes_A, spikes_B, is_patternA, n_exc):
+    rate_A = spikes_A.item() / (n_exc // 2)
+    rate_B = spikes_B.item() / (n_exc // 2)
+    
+    if rate_A == 0 and rate_B == 0:
+        return 0.0, 0.0, 'None', False, -0.1
+    
+    a_wins = rate_A > rate_B
+    correct = (a_wins == is_patternA)
+    margin = abs(rate_A - rate_B)
+    
+    winner = 'A' if a_wins else 'B'  
+    return rate_A, rate_B, winner, correct, (min(1.0, 0.3 + margin * 10) if correct 
+                             else max(-1.0, -0.3 - margin * 10))
 
 
 if __name__ == "__main__":

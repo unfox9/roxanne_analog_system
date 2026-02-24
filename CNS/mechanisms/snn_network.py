@@ -27,6 +27,8 @@ class IzhikevichLayer(nn.Module):
         self.dt = dt
         self.refractory_steps = refractory_steps
 
+        self.v_threshold = 30.0   
+
         # Dale's Principle
         # Excitatory and Inhibitory Neurons
         self.n_exc = int(n_neurons * exc_ratio)
@@ -85,9 +87,13 @@ class IzhikevichLayer(nn.Module):
             requires_grad=False
         )
         self.noise_level = nn.Parameter(
-            torch.rand(n_neurons) * 2.0 + 1.0,
+            torch.rand(n_neurons) * 2.0 + 0.2,
             requires_grad=False
         )
+
+        self.bias_current = nn.Parameter(torch.ones(n_neurons) * 5.0, requires_grad=False)
+        self.target_rate = 0.1
+        self.bias_lr = 0.0001  
 
         self.synapse = synapse
         
@@ -109,7 +115,7 @@ class IzhikevichLayer(nn.Module):
             self.reset_state(total_input_current.shape[0], total_input_current.device)
         prev_spike = self.pre_spike if self.pre_spike is not None else torch.zeros_like(self.post_spike)
 
-        bias_effect = 5.0
+        bias_effect = 0.0
         current_d = self.d
         current_b = self.b
         if neuromodulation_deltas:
@@ -121,13 +127,16 @@ class IzhikevichLayer(nn.Module):
             if "b" in neuromodulation_deltas:
                 current_b = self.b + neuromodulation_deltas["b"]
 
-        batch_size = total_input_current.shape[0]
-        background_noise = torch.randn_like(total_input_current) * self.noise_level
+        background_noise = torch.randn_like(total_input_current) * self.noise_level.to(total_input_current.device)
 
-        self.I = total_input_current + bias_effect + background_noise
+        mean_activity = self.post_spike.mean(dim=1, keepdim=True)
+        w_lateral = 10.0
+        lateral_inhibition_current = -w_lateral * mean_activity
+        self.I = total_input_current + bias_effect + background_noise + self.bias_current + lateral_inhibition_current
         if self.synapse:
             recurrent_current = self.synapse(prev_spike, self.v)
             self.I = self.I + recurrent_current
+        self.I = torch.clamp(self.I, -30, 50)
 
         d_calcium = (-self.calcium / self.tau_ca) * self.dt + self.post_spike * self.ca_spike
         self.calcium = self.calcium + d_calcium
@@ -145,8 +154,13 @@ class IzhikevichLayer(nn.Module):
         self.u = u_next
 
         can_fire = (self.refractory_counter <= 0).float()
-        spike_condition = (self.v >= 30.0).float()
+        spike_condition = (self.v >= self.v_threshold).float()
         self.post_spike = spike_condition * can_fire
+
+        with torch.no_grad():
+            activity_error = (self.post_spike - self.target_rate).mean(dim=0)
+            self.bias_current -= self.bias_lr * activity_error
+            self.bias_current.clamp_(min=-5.0, max=20.0)
 
         # v = (1 - spike) * v + spike * c
         self.v = (1.0 - self.post_spike) * self.v + self.post_spike * self.c

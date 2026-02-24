@@ -40,16 +40,20 @@ class ThreeFactorOptimizer:
 
         self.pre_trace = None
         self.post_trace = None
+
         # STDP parameters
-        self.tau_plus = 20.0
-        self.tau_minus = 20.0
+        self.tau_plus = 50.0
+        self.tau_minus = 50.0
         self.A_plus = 0.01
         self.A_minus = 0.012
 
         self.dopamine = dopamine
         self.dopamine_level = 0.0
 
-    def step(self, modulation_deltas=None):
+        self.competition_strength_E = 0.001
+        self.competition_strength_I = 0.0005
+
+    def step(self, modulation_deltas=None, da_override=None):
         lr_scale = 1.0
         is_frozen = False
         if modulation_deltas is not None:
@@ -66,7 +70,7 @@ class ThreeFactorOptimizer:
         ca = self.post_layer.calcium.detach().mean(dim=0)
         epsilon = 1e-6
         normalized = (ca - self.theta_d) / (self.theta_p - self.theta_d + epsilon)
-        ca_modulation = torch.tanh(2 * (normalized - 0.5))
+        ca_modulation = torch.sigmoid(4 * (normalized - 0.5))
         ca_modulation = ca_modulation.unsqueeze(1)
 
         # STDP update
@@ -86,29 +90,51 @@ class ThreeFactorOptimizer:
         ltd_matrix = torch.einsum('bi, bj -> ij', self.post_trace, pre_spike)
         stdp_update = (self.A_plus * ltp_matrix - self.A_minus * ltd_matrix) / batch_size
 
-        # E(t) = E(t-1) * decay + STDP(t)
+        # eligibility_trace / E(t) = E(t-1) * decay + STDP(t)
         decay = 0.95
         self.eligibility_trace = self.eligibility_trace * decay + ca_modulation * stdp_update
-        self.dopamine_level = self.dopamine.signal()
 
-        # Heterosynaptic Competition
+        # effective_dopamine
+        self.dopamine_level = self.dopamine.signal()
+        effective_da = da_override if da_override is not None else self.dopamine_level
+
+        # Heterosynaptic Competition / Oja's rule
         post_activity = self.post_layer.calcium.mean(dim=0)
         active_mask = (post_activity > 0.1).float()
-        competition_decay = (
-            0.001
-            * ((active_mask * post_activity).unsqueeze(1) ** 2)
+        activity_squared = (active_mask * post_activity).unsqueeze(1) ** 2
+        excitatory_mask = (self.synapse.weight.data > 0).float()
+        inhibitory_mask = (self.synapse.weight.data < 0).float()
+        exc_total_strength = torch.sum(self.synapse.weight.data * excitatory_mask, dim=1, keepdim=True)
+        exc_competition = (
+            self.competition_strength_E  
             * self.synapse.weight.data
+            * excitatory_mask
+            * exc_total_strength
+            * activity_squared
         )
+        inh_total_strength = torch.sum(torch.abs(self.synapse.weight.data) * inhibitory_mask, dim=1, keepdim=True)
+        inh_competition = (
+            self.competition_strength_I  
+            * torch.sign(self.synapse.weight.data)  
+            * torch.abs(self.synapse.weight.data)   
+            * inhibitory_mask
+            * inh_total_strength
+            * activity_squared
+        )
+        competition_decay = exc_competition + inh_competition
 
-        # dW = Learning_Rate * Dopamine * Eligibility
-        if abs(self.dopamine_level) > 0.001:
-            delta_w = effective_lr * (
-                self.dopamine_level * self.eligibility_trace - competition_decay
-            )
-
-            with torch.no_grad():
-                self.synapse.weight += delta_w
-                self.synapse.enforce_dale_principle()
+        reward_learning = torch.zeros_like(self.synapse.weight.data)
+        # dW = (Learning_Rate * Dopamine * eligibility_trace) - competition_decay
+        if abs(effective_da) > 0.001:
+            reward_learning = effective_lr * effective_da * self.eligibility_trace
+        decay_term = effective_lr * competition_decay 
+        delta_w = reward_learning - decay_term
+        with torch.no_grad():
+            self.synapse.weight += delta_w
+            self.synapse.enforce_dale_principle()
+        
+        if da_override is not None:
+            self.eligibility_trace *= 0.0
 
     def step_structure(self):
         if hasattr(self.synapse, 'evolve_connectivity'):

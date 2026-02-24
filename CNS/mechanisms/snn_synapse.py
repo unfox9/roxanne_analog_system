@@ -16,16 +16,13 @@ class Synapse(nn.Module):
                  max_delay_ms=20,
                  max_weight=1.0,
                  enable_plasticity=True,
-                 pruning_threshold=0.01,
+                 pruning_threshold=0.001,
                  sprouting_prob=0.01
                  ):
         super().__init__()
         _layer = layer
         _pre = pre_layer if pre_layer is not None else _layer
         _post = post_layer if post_layer is not None else _layer
-
-        if _pre is None or _post is None:
-             raise ValueError("Synapse 初始化失敗：必須提供 layer 或 pre_layer/post_layer")
 
         self.n_pre = _pre.n_neurons
         self.n_post = _post.n_neurons
@@ -36,7 +33,7 @@ class Synapse(nn.Module):
 
         self.weight = nn.Parameter(torch.empty(self.n_post, self.n_pre))
         effective_n = max(1.0, self.n_pre * density)
-        w_scale = 10.0 / np.sqrt(effective_n)
+        w_scale = 0.5 / np.sqrt(effective_n)
         nn.init.uniform_(self.weight, a=0.0, b=w_scale)
         with torch.no_grad():
             signs = torch.sign(self.neuron_type).unsqueeze(0)
@@ -145,7 +142,7 @@ class Synapse(nn.Module):
         g_exc_influx = torch.matmul(delayed_spikes, w_exc_magnitude.T)
         g_inh_influx = torch.matmul(delayed_spikes, w_inh_magnitude.T)
         self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=50)
-        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=-50, max=0)
+        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=0, max=50)
 
         
         I_exc = self.g_exc * (self.e_exc - v_post)

@@ -12,13 +12,13 @@ def test_pavlov_unified():
 
     n_neurons = 1024
     decision_neuron_idx = 0
-    n_steps = 1000
+    n_steps = 2000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = "result_unified.png"
 
     input_gain = 10.0
     noise_level = 2.0
-    learning_rate = 0.001
+    learning_rate = 0.01
     max_weight = 1.0
 
     layer = IzhikevichLayer(n_neurons, refractory_steps=5)
