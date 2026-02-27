@@ -12,14 +12,14 @@ class DopamineSystem:
         self.phasic_da = 0.0
         self.tonic_da = base_level
 
-        self.phasic_decay = 0.8
+        self.phasic_decay = 0.9
         self.tonic_decay = 0.99
 
         self.neuron_effects = {}
         self.synapse_effects = {}
 
         self.add_neuron_effect("input_bias", coefficient=0.0)
-        self.add_synapse_effect("lr_scale", coefficient=0.0)
+        self.add_synapse_effect("lr_scale", coefficient=5.0)
 
     def add_neuron_effect(self, param_name, coefficient):
         self.neuron_effects[param_name] = coefficient

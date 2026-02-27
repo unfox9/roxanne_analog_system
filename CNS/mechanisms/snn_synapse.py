@@ -4,21 +4,22 @@ import numpy as np
 
 
 class Synapse(nn.Module):
-    def __init__(self,
-                 layer=None,
-                 pre_layer=None,
-                 post_layer=None,
-                 density=0.3,
-                 dt=1.0, 
-                 tau_g=5.0, 
-                 e_exc=0.0,
-                 e_inh= -80.0,
-                 max_delay_ms=20,
-                 max_weight=1.0,
-                 enable_plasticity=True,
-                 pruning_threshold=0.001,
-                 sprouting_prob=0.01
-                 ):
+    def __init__(
+        self,
+        layer=None,
+        pre_layer=None,
+        post_layer=None,
+        density=0.3,
+        dt=1.0,
+        tau_g=5.0,
+        e_exc=0.0,
+        e_inh=-80.0,
+        max_delay_ms=20,
+        max_weight=1.0,
+        enable_plasticity=True,
+        pruning_threshold=0.001,
+        sprouting_prob=0.01,
+    ):
         super().__init__()
         _layer = layer
         _pre = pre_layer if pre_layer is not None else _layer
@@ -26,8 +27,8 @@ class Synapse(nn.Module):
 
         self.n_pre = _pre.n_neurons
         self.n_post = _post.n_neurons
-        
-        self.register_buffer('neuron_type', _pre.neuron_type.clone())
+
+        self.register_buffer("neuron_type", _pre.neuron_type.clone())
 
         self.max_weight = max_weight
 
@@ -40,10 +41,12 @@ class Synapse(nn.Module):
             self.weight.data *= signs
 
         mask = (torch.rand(self.n_post, self.n_pre) < density).float()
-        self.register_buffer('mask', mask)
+        self.register_buffer("mask", mask)
 
         self.max_delay_steps = int(max_delay_ms / dt)
-        self.register_buffer('delays', torch.randint(1, self.max_delay_steps, (self.n_pre,)))
+        self.register_buffer(
+            "delays", torch.randint(1, self.max_delay_steps, (self.n_pre,))
+        )
 
         # Shape: (Batch, Neurons, Time_Window)
         self.spike_buffer = None
@@ -79,7 +82,9 @@ class Synapse(nn.Module):
         if not self.enable_plasticity:
             return
         with torch.no_grad():
-            weak_synapses = (self.mask == 1) & (self.weight.data.abs() < self.pruning_threshold)
+            weak_synapses = (self.mask == 1) & (
+                self.weight.data.abs() < self.pruning_threshold
+            )
 
             self.mask[weak_synapses] = 0.0
             self.weight.data[weak_synapses] = 0.0
@@ -105,7 +110,9 @@ class Synapse(nn.Module):
                         current_types = self.neuron_type[cols]
 
                         base_val = 0.01 * self.max_weight
-                        noise = torch.rand(n_to_sprout, device=self.weight.device) * 0.005
+                        noise = (
+                            torch.rand(n_to_sprout, device=self.weight.device) * 0.005
+                        )
 
                         abs_weights = base_val + noise
 
@@ -114,7 +121,7 @@ class Synapse(nn.Module):
                         self.weight.data[rows, cols] = abs_weights * signs
 
                         self.mask[rows, cols] = 1.0
-            
+
             self.enforce_dale_principle()
 
     def forward(self, pre_spikes, v_post):
@@ -141,33 +148,33 @@ class Synapse(nn.Module):
 
         g_exc_influx = torch.matmul(delayed_spikes, w_exc_magnitude.T)
         g_inh_influx = torch.matmul(delayed_spikes, w_inh_magnitude.T)
-        self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=50)
-        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=0, max=50)
+        self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=10.0)
+        self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=0, max=10.0)
 
-        
-        I_exc = self.g_exc * (self.e_exc - v_post)
-        I_inh = self.g_inh * (self.e_inh - v_post)
-        
+        g_scale = 0.05
+        I_exc = self.g_exc * g_scale * (self.e_exc - v_post)
+        I_inh = self.g_inh * g_scale * (self.e_inh - v_post)
+
         self.I = I_exc + I_inh
-        self.I = torch.clamp(self.I, min=-50.0, max=50.0)
+        self.I = torch.clamp(self.I, min=-30.0, max=50.0)
 
         self.I = self.I.detach()
         self.g_exc = self.g_exc.detach()
         self.g_inh = self.g_inh.detach()
         self.spike_buffer = self.spike_buffer.detach()
         return self.I
-    
+
     def enforce_dale_principle(self):
         with torch.no_grad():
             self.weight.data *= self.mask
-            exc_mask = (self.neuron_type > 0)
+            exc_mask = self.neuron_type > 0
             if exc_mask.any():
-                self.weight.data[:, exc_mask] = self.weight.data[
-                    :, exc_mask
-                ].clamp(min=0.0, max=self.max_weight)
+                self.weight.data[:, exc_mask] = self.weight.data[:, exc_mask].clamp(
+                    min=0.0, max=self.max_weight
+                )
 
-            inh_mask = (self.neuron_type < 0)
+            inh_mask = self.neuron_type < 0
             if inh_mask.any():
-                self.weight.data[:, inh_mask] = self.weight.data[
-                    :, inh_mask
-                ].clamp(min=-self.max_weight, max=0.0)
+                self.weight.data[:, inh_mask] = self.weight.data[:, inh_mask].clamp(
+                    min=-self.max_weight, max=0.0
+                )
