@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 
@@ -16,6 +17,7 @@ class ThreeFactorOptimizer:
         theta_p=1.0,
         max_weight=4.0,
         dt=1.0,
+        is_feedback=False
     ):
         self.layer = layer
         self.lr = lr
@@ -52,8 +54,10 @@ class ThreeFactorOptimizer:
         self.dopamine = dopamine
         self.dopamine_level = 0.0
 
-        self.competition_strength_E = 0.0001
-        self.competition_strength_I = 0.0001
+        self.competition_strength_E = 0.001
+        self.competition_strength_I = 0.001
+
+        self.is_feedback = is_feedback
 
     def step(self, modulation_deltas=None, da_override=None, update_weights=True):
         lr_scale = 1.0
@@ -94,13 +98,12 @@ class ThreeFactorOptimizer:
             self.A_plus * ltp_matrix - self.A_minus * ltd_matrix
         ) / batch_size
 
-        # eligibility_trace / E(t) = E(t-1) * decay + STDP(t)
-        decay = 0.99
-        self.eligibility_trace = (
-            self.eligibility_trace * decay + ca_modulation * stdp_update
-        )
-
         if not update_weights:
+            # eligibility_trace / E(t) = E(t-1) * decay + STDP(t)
+            decay = 0.99
+            self.eligibility_trace = (
+                self.eligibility_trace * decay + ca_modulation * stdp_update
+            )
             return
 
         # effective_dopamine
@@ -112,7 +115,7 @@ class ThreeFactorOptimizer:
         # Heterosynaptic Competition / Oja's rule
         post_activity = self.post_layer.calcium.mean(dim=0)
         active_mask = (post_activity > self.theta_d).float()
-        activity_squared = (active_mask * post_activity).unsqueeze(1) ** 2
+        activity = (active_mask * post_activity).unsqueeze(1)
         excitatory_mask = (self.synapse.weight.data > 0).float()
         inhibitory_mask = (self.synapse.weight.data < 0).float()
         exc_total_strength = torch.sum(
@@ -123,7 +126,7 @@ class ThreeFactorOptimizer:
             * self.synapse.weight.data
             * excitatory_mask
             * exc_total_strength
-            * activity_squared
+            * activity
         )
         inh_total_strength = torch.sum(
             torch.abs(self.synapse.weight.data) * inhibitory_mask, dim=1, keepdim=True
@@ -133,32 +136,44 @@ class ThreeFactorOptimizer:
             * self.synapse.weight.data
             * inhibitory_mask
             * inh_total_strength
-            * activity_squared
+            * activity
         )
 
-        # iSTDP
-        target_activity = 0.05
-        activity_error = (post_activity - target_activity).unsqueeze(1)
-        pre_activity = self.pre_trace.mean(dim=0, keepdim=True)
-        delta_w_inh_learning = (
-            -(self.lr * 2) * activity_error * pre_activity * inhibitory_mask
-        )
+        if self.is_feedback:
+            pre_activity = self.pre_layer.calcium.detach()
+            post_error = self.post_layer.calcium.detach()
+            error_threshold = 0.1
+            active_error = F.relu(post_error - error_threshold)
+            excitatory_mask = (self.synapse.weight.data > 0).float()
+            inhibitory_mask = (self.synapse.weight.data < 0).float()
+            pc_update = torch.einsum("bi, bj -> ij", active_error, pre_activity)
+            pc_update_directional = (pc_update * excitatory_mask) - (pc_update * inhibitory_mask)
+            weight_decay = 0.001 * self.synapse.weight.data
+            delta_w = (self.lr * 0.1) * pc_update_directional - weight_decay
+        else:
+            trace_scale = 100.0
+            # iSTDP
+            target_activity = 0.05
+            activity_error = (post_activity - target_activity).unsqueeze(1)
+            pre_activity = self.pre_trace.mean(dim=0, keepdim=True)
+            delta_w_inh_learning = (
+                -(self.lr * 0.01) * activity_error * pre_activity * inhibitory_mask
+            )
 
-        reward_learning_exc = torch.zeros_like(self.synapse.weight.data)
-        # dW = (Learning_Rate * Dopamine * eligibility_trace) - competition_decay
-        reward_learning_exc = (
-            effective_lr * effective_da * self.eligibility_trace * excitatory_mask
-        )
-        decay_term_exc = self.lr * exc_competition
-        decay_term_inh = self.lr * inh_competition
-        delta_w_exc = reward_learning_exc - decay_term_exc
-        delta_w_inh = delta_w_inh_learning - decay_term_inh
-        delta_w = delta_w_exc + delta_w_inh
+            reward_learning_exc = torch.zeros_like(self.synapse.weight.data)
+            # dW = (Learning_Rate * Dopamine * eligibility_trace) - competition_decay
+            reward_learning_exc = (
+                effective_lr * effective_da * self.eligibility_trace * trace_scale * excitatory_mask
+            )
+            decay_term_exc = self.lr * exc_competition
+            decay_term_inh = self.lr * inh_competition
+            delta_w_exc = reward_learning_exc - decay_term_exc
+            delta_w_inh = delta_w_inh_learning - decay_term_inh
+            delta_w = delta_w_exc + delta_w_inh
+            self.eligibility_trace *= 0.1
         with torch.no_grad():
             self.synapse.weight += delta_w
             self.synapse.enforce_dale_principle()
-
-        self.eligibility_trace *= 0.0
 
     def step_structure(self):
         if hasattr(self.synapse, "evolve_connectivity"):

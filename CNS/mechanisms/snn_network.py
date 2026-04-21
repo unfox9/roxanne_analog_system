@@ -20,7 +20,6 @@ class IzhikevichLayer(nn.Module):
         d_inh=2.0,
         dt=1.0,
         refractory_steps=5,
-        enable_alic=True,
     ):
         super().__init__()
 
@@ -90,15 +89,7 @@ class IzhikevichLayer(nn.Module):
             torch.rand(n_neurons) * 2.0 + 0.2, requires_grad=False
         )
 
-        self.bias_current = nn.Parameter(
-            torch.ones(n_neurons) * 5.0, requires_grad=False
-        )
-        self.target_rate = 0.1
-        self.bias_lr = 0.002
-
         self.synapse = synapse
-
-        self.enable_alic = enable_alic
 
         self.I = None
 
@@ -139,26 +130,11 @@ class IzhikevichLayer(nn.Module):
         )
 
         self.I = (
-            total_input_current + bias_effect + background_noise + self.bias_current
+            total_input_current + bias_effect + background_noise 
         )
         if self.synapse:
             recurrent_current = self.synapse(prev_spike, self.v)
             self.I = self.I + recurrent_current
-
-        # ALIC - Activity-Level Informed Competition
-        if hasattr(self, 'enable_alic') and self.enable_alic:
-            can_compete = (self.refractory_counter <= 0).float()
-            competing_I = self.I * can_compete + (-9999.0) * (1.0 - can_compete)
-            i_max = competing_I.max(dim=1, keepdim=True)[0]
-            i_thresh = i_max / 2.0
-            if i_max.max().item() > 0:
-                i_thresh = i_max / 2.0
-                is_follower = (self.I < i_max - 1e-4).float() * can_compete
-                competing_mask  = (self.I > i_thresh).float() * is_follower
-                alpha_inh = 1.625
-                dynamic_inhibition = alpha_inh * i_max * competing_mask
-                self.I = self.I - dynamic_inhibition
-
         self.I = torch.clamp(self.I, -30, 50)
 
         d_calcium = (
@@ -171,7 +147,7 @@ class IzhikevichLayer(nn.Module):
         dv = 0.04 * self.v**2 + 5 * self.v + 140 - self.u + self.I
         dv = dv * (1.0 - is_refractory)  
         v_next = self.v + self.dt * dv
-        v_next = torch.clamp(v_next, min=-100.0, max=100.0)
+        v_next = torch.clamp(v_next, min=-85.0, max=30.0)
 
         # u' = a(bv - u)
         du = self.a * (current_b * self.v - self.u)
@@ -184,11 +160,6 @@ class IzhikevichLayer(nn.Module):
         can_fire = (self.refractory_counter <= 0).float()
         spike_condition = (self.v >= self.v_threshold).float()
         self.post_spike = spike_condition * can_fire
-
-        with torch.no_grad():
-            activity_error = (self.post_spike - self.target_rate).mean(dim=0)
-            self.bias_current -= self.bias_lr * activity_error
-            self.bias_current.clamp_(min=-5.0, max=20.0)
 
         # v = (1 - spike) * v + spike * c
         self.v = (1.0 - self.post_spike) * self.v + self.post_spike * self.c

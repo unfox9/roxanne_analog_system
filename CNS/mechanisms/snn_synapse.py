@@ -16,9 +16,13 @@ class Synapse(nn.Module):
         e_inh=-80.0,
         max_delay_ms=20,
         max_weight=1.0,
+        w_init_multiplier=3.0,
+        g_scale=0.01,
         enable_plasticity=True,
         pruning_threshold=0.001,
         sprouting_prob=0.01,
+        is_recurrent=False,
+        is_feedback=False
     ):
         super().__init__()
         _layer = layer
@@ -29,20 +33,37 @@ class Synapse(nn.Module):
         self.n_post = _post.n_neurons
 
         self.register_buffer("neuron_type", _pre.neuron_type.clone())
+        self.register_buffer("post_neuron_type", _post.neuron_type.clone())
 
         self.max_weight = max_weight
-
         self.weight = nn.Parameter(torch.empty(self.n_post, self.n_pre))
         effective_n = max(1.0, self.n_pre * density)
-        w_scale = 0.5 / np.sqrt(effective_n)
-        nn.init.uniform_(self.weight, a=0.0, b=w_scale)
+        w_scale = w_init_multiplier / np.sqrt(effective_n)
+        nn.init.uniform_(self.weight, a=0.0, b=w_scale * 5.0)
         with torch.no_grad():
-            signs = torch.sign(self.neuron_type).unsqueeze(0)
-            self.weight.data *= signs
-
-        mask = (torch.rand(self.n_post, self.n_pre) < density).float()
+            _temp_inh_mask = self.neuron_type < 0
+            if _temp_inh_mask.any():
+                n_inh_cols = _temp_inh_mask.sum().item()
+                small_inh_weights = torch.empty(self.n_post, n_inh_cols, device=self.weight.device).uniform_(0.0, w_scale * 0.5)
+                self.weight.data[:, _temp_inh_mask] = small_inh_weights * -1.0
+        mask = torch.zeros_like(self.weight)
+        pre_is_exc = self.neuron_type > 0
+        pre_is_inh = self.neuron_type < 0
+        post_is_exc = self.post_neuron_type > 0
+        post_is_inh = self.post_neuron_type < 0
+        random_matrix = torch.rand(self.n_post, self.n_pre)
+        if is_recurrent:
+            mask[:, pre_is_exc] = (random_matrix[:, pre_is_exc] < density).float()
+            mask[:, pre_is_inh] = 1.0
+        elif is_feedback:
+            valid_feedback = post_is_inh.unsqueeze(1) & pre_is_exc.unsqueeze(0)
+            mask[valid_feedback] = (random_matrix[valid_feedback] < density).float()
+        else:
+            mask[:, pre_is_exc] = (random_matrix[:, pre_is_exc] < density).float()
+            mask[:, pre_is_inh] = 0.0
         self.register_buffer("mask", mask)
-
+   
+        
         self.max_delay_steps = int(max_delay_ms / dt)
         self.register_buffer(
             "delays", torch.randint(1, self.max_delay_steps, (self.n_pre,))
@@ -58,6 +79,7 @@ class Synapse(nn.Module):
         self.e_exc = e_exc
         self.e_inh = e_inh
 
+        self.g_scale = g_scale
         self.g_exc = None
         self.g_inh = None
 
@@ -82,44 +104,36 @@ class Synapse(nn.Module):
         if not self.enable_plasticity:
             return
         with torch.no_grad():
+            exc_pre_mask = (self.neuron_type > 0).unsqueeze(0)
             weak_synapses = (self.mask == 1) & (
                 self.weight.data.abs() < self.pruning_threshold
+                & exc_pre_mask
             )
-
             self.mask[weak_synapses] = 0.0
             self.weight.data[weak_synapses] = 0.0
-
-            current_density = self.mask.sum() / self.mask.numel()
-
+            n_exc_pre = (self.neuron_type > 0).sum().item()
+            if n_exc_pre == 0:
+                return
+            n_total_exc_conns = self.n_post * n_exc_pre
+            n_current_exc_conns = (self.mask * exc_pre_mask).sum().item()
+            current_density = n_current_exc_conns / n_total_exc_conns
             if current_density < self.target_density:
-                n_total = self.mask.numel()
-                n_target = int(self.target_density * n_total)
-                n_current = int(self.mask.sum().item())
-                n_to_sprout = max(0, n_target - n_current)
-
+                n_target = int(self.target_density * n_total_exc_conns)
+                n_to_sprout = max(0, n_target - int(n_current_exc_conns))
                 if n_to_sprout > 0:
-                    empty_indices = torch.nonzero(self.mask == 0, as_tuple=False)
-
+                    empty_mask = (self.mask == 0) & exc_pre_mask
+                    empty_indices = torch.nonzero(empty_mask, as_tuple=False)
                     if empty_indices.size(0) > n_to_sprout:
                         idx = torch.randperm(empty_indices.size(0))[:n_to_sprout]
                         new_conns = empty_indices[idx]
-
                         rows = new_conns[:, 0]
                         cols = new_conns[:, 1]
-
-                        current_types = self.neuron_type[cols]
-
                         base_val = 0.01 * self.max_weight
                         noise = (
                             torch.rand(n_to_sprout, device=self.weight.device) * 0.005
                         )
-
                         abs_weights = base_val + noise
-
-                        signs = torch.where(current_types > 0, 1.0, -1.0)
-
-                        self.weight.data[rows, cols] = abs_weights * signs
-
+                        self.weight.data[rows, cols] = abs_weights
                         self.mask[rows, cols] = 1.0
 
             self.enforce_dale_principle()
@@ -151,9 +165,8 @@ class Synapse(nn.Module):
         self.g_exc = torch.clamp(self.g_exc * self.decay + g_exc_influx, min=0, max=10.0)
         self.g_inh = torch.clamp(self.g_inh * self.decay + g_inh_influx, min=0, max=10.0)
 
-        g_scale = 0.05
-        I_exc = self.g_exc * g_scale * (self.e_exc - v_post)
-        I_inh = self.g_inh * g_scale * (self.e_inh - v_post)
+        I_exc = self.g_exc * self.g_scale * (self.e_exc - v_post)
+        I_inh = self.g_inh * self.g_scale * (self.e_inh - v_post)
 
         self.I = I_exc + I_inh
         self.I = torch.clamp(self.I, min=-30.0, max=50.0)
