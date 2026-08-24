@@ -17,7 +17,7 @@ class Synapse(nn.Module):
         max_delay_ms=20,
         max_weight=1.0,
         w_init_multiplier=3.0,
-        g_scale=0.01,
+        g_scale=1.0,
         enable_plasticity=True,
         pruning_threshold=0.001,
         sprouting_prob=0.01,

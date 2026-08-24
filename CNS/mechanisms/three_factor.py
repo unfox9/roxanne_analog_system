@@ -55,11 +55,11 @@ class ThreeFactorOptimizer:
         self.dopamine_level = 0.0
 
         self.competition_strength_E = 0.001
-        self.competition_strength_I = 0.001
+        self.competition_strength_I = 0.1
 
         self.is_feedback = is_feedback
 
-    def step(self, modulation_deltas=None, da_override=None, update_weights=True):
+    def step(self, modulation_deltas=None, update_weights=True):
         lr_scale = 1.0
         is_frozen = False
         if modulation_deltas is not None:
@@ -110,8 +110,7 @@ class ThreeFactorOptimizer:
         self.dopamine_level = (
             self.dopamine.signal() if self.dopamine is not None else 0.0
         )
-        effective_da = da_override if da_override is not None else 1.0
-
+        
         # Heterosynaptic Competition / Oja's rule
         post_activity = self.post_layer.calcium.mean(dim=0)
         active_mask = (post_activity > self.theta_d).float()
@@ -163,7 +162,7 @@ class ThreeFactorOptimizer:
             reward_learning_exc = torch.zeros_like(self.synapse.weight.data)
             # dW = (Learning_Rate * Dopamine * eligibility_trace) - competition_decay
             reward_learning_exc = (
-                effective_lr * effective_da * self.eligibility_trace * trace_scale * excitatory_mask
+                effective_lr * self.dopamine_level * self.eligibility_trace * trace_scale * excitatory_mask
             )
             decay_term_exc = self.lr * exc_competition
             decay_term_inh = self.lr * inh_competition

@@ -12,17 +12,17 @@ import numpy as np
 def test_pavlov_unified():
     print("開始巴甫洛夫測試(Deep)...")
 
-    n_neurons1 = 256
-    n_neurons2 = 1024
-    n_neurons3 = 256
-    n_steps = 3000
+    n_neurons1 = 128
+    n_neurons2 = 128
+    n_neurons3 = 128
+    n_steps = 1000
     time_steps = 100
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     save_path = "deep_snn.png"
 
     input_gain = 10.0
     learning_rate = 0.01
-    max_weight = 2.0
+    max_weight = 10
 
     dopamine = DopamineSystem(dt=1.0, base_level=0.1)
 
@@ -31,14 +31,14 @@ def test_pavlov_unified():
     layer3 = IzhikevichLayer(n_neurons3)
 
     layer1_recurrent = Synapse(layer=layer1, density=0.3, is_recurrent=True)
-    layer2_recurrent = Synapse(layer=layer2, density=0.1, is_recurrent=True)
+    layer2_recurrent = Synapse(layer=layer2, density=0.3, is_recurrent=True)
     layer3_recurrent = Synapse(layer=layer3, density=0.3, is_recurrent=True)
-    bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2, density=0.1)
-    bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3, density=0.1)
-    '''
+    bridge1_2 = Synapse(pre_layer=layer1, post_layer=layer2, density=0.3)
+    bridge2_3 = Synapse(pre_layer=layer2, post_layer=layer3, density=0.3)
+    
     bridge2_1 = Synapse(pre_layer=layer2, post_layer=layer1, density=0.3, is_feedback=True)
     bridge3_2 = Synapse(pre_layer=layer3, post_layer=layer2, density=0.3, is_feedback=True)
-    '''
+    
     
     layer1.to(device)
     layer2.to(device)
@@ -48,10 +48,10 @@ def test_pavlov_unified():
     layer3_recurrent.to(device)
     bridge1_2.to(device)
     bridge2_3.to(device)
-    '''
+    
     bridge2_1.to(device)
     bridge3_2.to(device)
-    '''
+    
 
     layer1.synapse = layer1_recurrent
     layer2.synapse = layer2_recurrent
@@ -65,10 +65,10 @@ def test_pavlov_unified():
     layer3_recurrent.reset_state(batch_size=1, device=device)
     bridge1_2.reset_state(batch_size=1, device=device)
     bridge2_3.reset_state(batch_size=1, device=device)
-    '''
+    
     bridge2_1.reset_state(batch_size=1, device=device)
     bridge3_2.reset_state(batch_size=1, device=device)
-    '''
+    
 
     opt_l1_recurrent = ThreeFactorOptimizer(
         layer=layer1,
@@ -108,7 +108,7 @@ def test_pavlov_unified():
         lr=learning_rate,
         max_weight=max_weight,
     )
-    '''
+    
     opt_bridge2_1 = ThreeFactorOptimizer(
         pre_layer=layer2,
         post_layer=layer1,
@@ -126,7 +126,7 @@ def test_pavlov_unified():
         max_weight=max_weight,
         is_feedback=True
     )
-    '''
+    
 
     n_exc_l1 = int(n_neurons1 * 0.8)
     n_exc_l2 = int(n_neurons2 * 0.8)
@@ -245,15 +245,15 @@ def test_pavlov_unified():
             current_input = base_input
 
             neuron_deltas, synapse_deltas = dopamine.get_deltas()
-            '''
+            
             fb_1 = bridge2_1(spikes2_prev, layer1.v)
             fb_2 = bridge3_2(spikes3_prev, layer2.v)
-            '''
+            
 
-            spikes1, calcium1 = layer1(current_input )
+            spikes1, calcium1 = layer1(current_input + fb_1)
             input_current_2 = bridge1_2(spikes1, layer2.v)
             spikes2, calcium2 = layer2(
-                input_current_2
+                input_current_2 + fb_2
             )
             input_current_3 = bridge2_3(spikes2, layer3.v)
             spikes3, calcium3 = layer3(
@@ -277,15 +277,15 @@ def test_pavlov_unified():
                 }
                 trial_snapshots.append(snapshot)
 
-            opt_l1_recurrent.step(update_weights=False)
-            opt_bridge1_2.step(update_weights=False)
-            opt_l2_recurrent.step(update_weights=False)
-            opt_bridge2_3.step(update_weights=False)
-            opt_l3_recurrent.step(update_weights=False)
-            '''
-            opt_bridge2_1.step(update_weights=False)
-            opt_bridge3_2.step(update_weights=False)
-            '''
+            opt_l1_recurrent.step(update_weights=True)
+            opt_bridge1_2.step(update_weights=True)
+            opt_l2_recurrent.step(update_weights=True)
+            opt_bridge2_3.step(update_weights=True)
+            opt_l3_recurrent.step(update_weights=True)
+
+            opt_bridge2_1.step(update_weights=True)
+            opt_bridge3_2.step(update_weights=True)
+            
 
             total_spikes_A += spikes3[:, group_A].sum()
             total_spikes_B += spikes3[:, group_B].sum()
@@ -301,7 +301,7 @@ def test_pavlov_unified():
         for opt in [opt_l1_recurrent, opt_bridge1_2, opt_l2_recurrent]:
             opt.step()
         for opt in [opt_bridge2_3, opt_l3_recurrent]:
-            opt.step(da_override=da_signal, modulation_deltas=synapse_deltas)
+            opt.step(modulation_deltas=synapse_deltas)
 
         if trial % 100 == 0:
             detailed_traces["trial"].append(trial)
@@ -367,24 +367,24 @@ def test_pavlov_unified():
 
             w1_2 = bridge1_2.weight.data[:n_exc_l1,:n_exc_l2]
             w2_3 = bridge2_3.weight.data[:n_exc_l2,:n_exc_l3]
-            '''
+            
             w2_1 = bridge2_1.weight.data[n_exc_l1:,:n_exc_l2]
             w3_2 = bridge3_2.weight.data[n_exc_l2:,:n_exc_l3]    
-            '''
+            
             detailed_traces["bridge1_2_weights_max"].append(w1_2.max().item())
             detailed_traces["bridge1_2_weights_mean"].append(w1_2.mean().item())
             detailed_traces["bridge1_2_weights_std"].append(w1_2.std().item())
             detailed_traces["bridge2_3_weights_max"].append(w2_3.max().item())
             detailed_traces["bridge2_3_weights_mean"].append(w2_3.mean().item())
             detailed_traces["bridge2_3_weights_std"].append(w2_3.std().item())
-            '''
+            
             detailed_traces["bridge2_1_weights_max"].append(w2_1.max().item())
             detailed_traces["bridge2_1_weights_mean"].append(w2_1.mean().item())
             detailed_traces["bridge2_1_weights_std"].append(w2_1.std().item())
             detailed_traces["bridge3_2_weights_max"].append(w3_2.max().item())
             detailed_traces["bridge3_2_weights_mean"].append(w3_2.mean().item())
             detailed_traces["bridge3_2_weights_std"].append(w3_2.std().item())
-            '''
+            
             w_to_groupA = bridge2_3.weight.data[group_A, :n_exc_l2]
             w_to_groupB = bridge2_3.weight.data[group_B, :n_exc_l2]
             w_to_groupC = bridge2_3.weight.data[group_C, :n_exc_l2]
@@ -457,11 +457,11 @@ def test_pavlov_unified():
             print(f"\nFeedforward Synapse Weights (bridge):")
             print(f"  Bridge1_2 (layer1->layer2): Mean: {w1_2.mean():.4f} | Std: {w1_2.std():.4f}")
             print(f"  Bridge2_3 (layer2->layer3): Mean: {w2_3.mean():.4f} | Std: {w2_3.std():.4f}")
-            '''
+            
             print(f"\nFeedback Synapse Weights (bridge):")
             print(f"  Bridge2_1 (layer2->layer1): Mean: {w2_1.mean():.4f} | Std: {w2_1.std():.4f}")
             print(f"  Bridge3_2 (layer3->layer2): Mean: {w3_2.mean():.4f} | Std: {w3_2.std():.4f}")
-            '''
+            
             print(f"\nDecision Layer (layer2->layer3) Weights to Groups:")
             print(f"  Bridge2_3 (layer2->groupA): Mean: {w_to_groupA.mean():.4f} | Std: {w_to_groupA.std():.4f}")
             print(f"  Bridge2_3 (layer2->groupB): Mean: {w_to_groupB.mean():.4f} | Std: {w_to_groupB.std():.4f}")
