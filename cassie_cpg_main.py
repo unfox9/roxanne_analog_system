@@ -30,6 +30,7 @@ import numpy as np
 from CNS.spinalcord.izhikevich_cpg import IzhikevichCPG
 from PNS.motor.cassie_gait_decoder import CassieGaitDecoder
 from PNS.motor.cassie_controller import CassieController
+from PNS.motor.cassie_standing import CassieStanding
 from PNS.mujoco_env import MujocoEnv
 
 
@@ -39,14 +40,14 @@ from PNS.mujoco_env import MujocoEnv
 PROJECT_ROOT = Path(__file__).resolve().parent
 SCENE_XML = PROJECT_ROOT / "configs" / "agility_cassie" / "scene_stand.xml"
 
-SIM_DURATION_S = 20.0
+SIM_DURATION_S = 1.0
 CPG_DT_S = 0.002          # 500 Hz neural / gait update
 RENDER_HZ = 60.0
-PRINT_EVERY_S = 0.5
+PRINT_EVERY_S = 0.05
 
 # Start gently.  This multiplies the controller output before MuJoCo ctrlrange
 # clipping.  Increase later only after looking at tracking and saturation.
-CTRL_SCALE = 0.50
+CTRL_SCALE = 1.00
 
 # Start with the gait decoder at half amplitude.  This lets us first verify the
 # sign and timing of hip/knee/foot motion without asking for a huge stride.
@@ -54,6 +55,8 @@ GAIT_AMPLITUDE_SCALE = 1.00
 
 # Keep the visual simulation near wall-clock speed so the motion is watchable.
 REALTIME = True
+
+Joint_diagnostics_timer = 1
 
 
 def resolve_joint_qpos_address(model: mujoco.MjModel, joint_name: str) -> int:
@@ -65,6 +68,7 @@ def resolve_joint_qpos_address(model: mujoco.MjModel, joint_name: str) -> int:
 
 
 def main() -> None:
+    joint_dump_done = False
     # 1) Load the rail-constrained Cassie scene and reset to the supplied home
     #    posture.  The XML, not this Python file, owns the rail constraint.
     env = MujocoEnv(str(SCENE_XML))
@@ -89,6 +93,7 @@ def main() -> None:
 
     # 2) Build the three layers.  Notice that each layer only knows the output
     #    of the layer immediately before it.
+    standing = CassieStanding(env.model)
     cpg = IzhikevichCPG(sim_dt=CPG_DT_S)
     decoder = CassieGaitDecoder(
         amplitude_scale=GAIT_AMPLITUDE_SCALE,
@@ -101,8 +106,11 @@ def main() -> None:
 
     cpg.reset()
     decoder.reset()
+    standing.reset(env.data)
 
     rail_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-x")
+    pitch_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-pitch")
+    height_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-z")
 
     print("=== Cassie Izhikevich CPG rail test ===")
     print(f"scene              : {SCENE_XML}")
@@ -132,15 +140,18 @@ def main() -> None:
             # ---------------------------------------------------------------
             # A. Neural rhythm + pattern formation at 500 Hz
             # ---------------------------------------------------------------
-            last_cpg = cpg.step(tonic_scale=1.0)
-            q_des = decoder.decode(last_cpg)
+            #last_cpg = cpg.step(tonic_scale=1.0)
+            #q_des = decoder.decode(last_cpg)
 
+            
             # ---------------------------------------------------------------
             # B. Low-level PD + MuJoCo physics at 2000 Hz
             #    q_des stays constant during these four small physics steps.
             # ---------------------------------------------------------------
+           
             for _ in range(physics_steps_per_cpg):
-                last_control = controller.apply(env.data, q_des)
+                stand_out = standing.step(env.data,dt=physics_dt)
+                last_control = controller.apply(env.data, stand_out.as_dict())
                 env.step(None)
 
             sim_elapsed = float(env.data.time) - sim_start
@@ -157,15 +168,49 @@ def main() -> None:
             # ---------------------------------------------------------------
             if sim_elapsed >= next_print_time and last_control is not None:
                 x = float(env.data.qpos[rail_qpos_adr])
-                max_error = float(np.max(np.abs(last_control.position_error)))
+                pitch = float(env.data.qpos[pitch_qpos_adr])
+                z = float(env.data.qpos[height_qpos_adr])
+                raw_max_error = float(np.max(np.abs(last_control.position_error)))
+                pd_max_error = min(raw_max_error, 0.60)
                 print(
                     f"t={sim_elapsed:6.2f}s  "
                     f"x={x:+7.3f}m  "
-                    f"CPG L/R={last_cpg.left:+.3f}/{last_cpg.right:+.3f}  "
-                    f"max|qerr|={max_error:.3f}rad  "
-                    f"sat={last_control.saturation_count}/10"
+                    f"pitch={math.degrees(pitch):+7.3f}deg  "
+                    f"pitch_rate={math.degrees(stand_out.pitch_rate):+.1f}deg/s  "
+                    f"z={z:+7.3f}m  "
+                    #f"CPG L/R={last_cpg.left:+.3f}/{last_cpg.right:+.3f}  "
+                    f"qerr={math.degrees(raw_max_error):+.3f}deg  "
+                    f"PDerr<={math.degrees(pd_max_error):+.3f}deg  "
+                    f"sat={last_control.saturation_count}/10  "
+                    f"zdot={stand_out.z_velocity:+.3f}  "
+                    f"dz={stand_out.knee_height_delta:+.3f}  "
+                    f"height_integral={standing._height_integral:+.3f}  "
+                    f"dhip={math.degrees(stand_out.hip_pitch_delta):+.1f}deg  "
+                    f"dfoot={math.degrees(stand_out.foot_pitch_delta):+.1f}deg  "
                 )
                 next_print_time += PRINT_EVERY_S
+
+            if sim_elapsed >= Joint_diagnostics_timer and not joint_dump_done:
+                print(f"\n=== Joint diagnostics at ~{Joint_diagnostics_timer} s ===")
+
+                for name, q, qdes, err, tau, ctrl in zip(
+                    controller.ACTUATOR_ORDER,
+                    last_control.q,
+                    last_control.q_des,
+                    last_control.position_error,
+                    last_control.joint_torque,
+                    last_control.ctrl,
+                ):
+                    print(
+                        f"{name:18s} "
+                        f"q={q:+.3f}  "
+                        f"qdes={qdes:+.3f}  "
+                        f"err={err:+.3f}  "
+                        f"tau={tau:+7.2f} Nm  "
+                        f"ctrl={ctrl:+7.3f}"
+                    )
+
+                joint_dump_done = True
 
             # Pace in chunks rather than sleeping every 0.5 ms physics step.
             if REALTIME:
@@ -178,6 +223,7 @@ def main() -> None:
         # Zero motor commands before closing the viewer.
         env.data.ctrl[:] = 0.0
         env.close()
+
 
     final_x = float(env.data.qpos[rail_qpos_adr])
     final_t = float(env.data.time) - sim_start

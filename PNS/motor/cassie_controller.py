@@ -94,13 +94,13 @@ class CassieController:
         "left-hip-roll": JointPDGains(kp=70.0, kd=6.0),
         "left-hip-yaw": JointPDGains(kp=55.0, kd=5.0),
         "left-hip-pitch": JointPDGains(kp=110.0, kd=9.0),
-        "left-knee": JointPDGains(kp=120.0, kd=10.0),
-        "left-foot": JointPDGains(kp=35.0, kd=3.0),
+        "left-knee": JointPDGains(kp=180.0, kd=12.0),
+        "left-foot": JointPDGains(kp=70.0, kd=5.0),
         "right-hip-roll": JointPDGains(kp=70.0, kd=6.0),
         "right-hip-yaw": JointPDGains(kp=55.0, kd=5.0),
         "right-hip-pitch": JointPDGains(kp=110.0, kd=9.0),
-        "right-knee": JointPDGains(kp=120.0, kd=10.0),
-        "right-foot": JointPDGains(kp=35.0, kd=3.0),
+        "right-knee": JointPDGains(kp=180.0, kd=12.0),
+        "right-foot": JointPDGains(kp=70.0, kd=5.0),
     }
 
     def __init__(
