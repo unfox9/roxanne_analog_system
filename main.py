@@ -24,20 +24,20 @@ def load_yaml(path):
 def make_env(cfg):
     suite = cfg["env"]
 
-    if suite == "WolfEnv":
-        from PNS.mujoco_env import WolfEnv
+    if suite == "MujocoEnv":
+        from PNS.mujoco_env import MujocoEnv
 
         executable_path = cfg.get("executable_path", "path/to/build.exe")
         decision_interval = cfg.get("decision_interval", 1)
         render = cfg.get("render", True)
 
-        base_env = WolfEnv(
+        base_env = MujocoEnv(
             executable_path=executable_path,
             decision_interval=decision_interval,
             render=render,
         )
 
-    return env
+    return base_env
 
 
 class Workspace(object):

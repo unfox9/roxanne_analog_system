@@ -4,14 +4,27 @@ import numpy as np
 import time
 
 
-class WolfEnv:
+class MujocoEnv:
     def __init__(self, xml_path):
         self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
         self.viewer = None
 
-    def reset(self):
-        mujoco.mj_resetData(self.model, self.data)
+    def reset(self, keyframe=None):
+        if keyframe is None:
+            mujoco.mj_resetData(self.model, self.data)
+        else:
+            key_id = mujoco.mj_name2id(
+                self.model,
+                mujoco.mjtObj.mjOBJ_KEY,
+                keyframe,
+            )
+            mujoco.mj_resetDataKeyframe(
+                self.model,
+                self.data,
+                key_id,
+            )
+        mujoco.mj_forward(self.model, self.data)
         return self.get_observation()
 
     def step(self, action):
