@@ -59,8 +59,8 @@
       <inertial pos="0.05066 0.000346 0.02841" mass="10.33"
         fullinertia="0.085821 0.049222 0.08626 1.276e-05 -0.00016022 -0.000414"/>
       <joint name="pelvis-rail-x" type="slide" axis="1 0 0" damping="0"/>
-      <joint name="pelvis-rail-z" type="slide" axis="0 0 1" damping="0"/>
-      <joint name="pelvis-rail-pitch" type="hinge" axis="0 1 0" damping="0"/> 
+      <!--- <joint name="pelvis-rail-z" type="slide" axis="0 0 1" damping="0"/> -->
+      <!--- <joint name="pelvis-rail-pitch" type="hinge" axis="0 1 0" damping="0"/> -->
       <geom type="mesh" mesh="cassie-pelvis" euler="0 0 90"/>
       <!-- <geom type="sphere" size="0.15" pos="0.02 0 0.02" class="collision"/> -->
       <geom type="ellipsoid" size="0.15 0.12 0.13" pos="0.03 0 0.03" class="collision"/>
@@ -277,7 +277,7 @@
 
   <keyframe>
     <key name="home"
-      qpos="0 0 0
+      qpos="0 
             0.00449956 0 0.497301 0.97861 -0.0164104 0.0177766
             -0.204298 -1.1997 0 1.42671 -2.25907e-06 -1.52439 1.50645 -1.59681
             -0.00449956 0 0.497301 0.97874 0.0038687 -0.0151572

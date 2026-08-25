@@ -40,23 +40,23 @@ from PNS.mujoco_env import MujocoEnv
 PROJECT_ROOT = Path(__file__).resolve().parent
 SCENE_XML = PROJECT_ROOT / "configs" / "agility_cassie" / "scene_stand.xml"
 
-SIM_DURATION_S = 1.0
+SIM_DURATION_S = 50.0
 CPG_DT_S = 0.002          # 500 Hz neural / gait update
 RENDER_HZ = 60.0
-PRINT_EVERY_S = 0.05
+PRINT_EVERY_S = 2
 
 # Start gently.  This multiplies the controller output before MuJoCo ctrlrange
 # clipping.  Increase later only after looking at tracking and saturation.
-CTRL_SCALE = 1.00
+CTRL_SCALE = 1.0
 
 # Start with the gait decoder at half amplitude.  This lets us first verify the
 # sign and timing of hip/knee/foot motion without asking for a huge stride.
-GAIT_AMPLITUDE_SCALE = 1.00
+GAIT_AMPLITUDE_SCALE = 3.5
 
 # Keep the visual simulation near wall-clock speed so the motion is watchable.
 REALTIME = True
 
-Joint_diagnostics_timer = 1
+Joint_diagnostics_timer = 5
 
 
 def resolve_joint_qpos_address(model: mujoco.MjModel, joint_name: str) -> int:
@@ -109,8 +109,8 @@ def main() -> None:
     standing.reset(env.data)
 
     rail_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-x")
-    pitch_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-pitch")
-    height_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-z")
+    #pitch_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-pitch")
+    #height_qpos_adr = resolve_joint_qpos_address(env.model, "pelvis-rail-z")
 
     print("=== Cassie Izhikevich CPG rail test ===")
     print(f"scene              : {SCENE_XML}")
@@ -140,8 +140,8 @@ def main() -> None:
             # ---------------------------------------------------------------
             # A. Neural rhythm + pattern formation at 500 Hz
             # ---------------------------------------------------------------
-            #last_cpg = cpg.step(tonic_scale=1.0)
-            #q_des = decoder.decode(last_cpg)
+            last_cpg = cpg.step(tonic_scale=1.0)
+            q_des = decoder.decode(last_cpg)
 
             
             # ---------------------------------------------------------------
@@ -151,7 +151,7 @@ def main() -> None:
            
             for _ in range(physics_steps_per_cpg):
                 stand_out = standing.step(env.data,dt=physics_dt)
-                last_control = controller.apply(env.data, stand_out.as_dict())
+                last_control = controller.apply(env.data, q_des, stand_out.as_dict())
                 env.step(None)
 
             sim_elapsed = float(env.data.time) - sim_start
@@ -168,25 +168,38 @@ def main() -> None:
             # ---------------------------------------------------------------
             if sim_elapsed >= next_print_time and last_control is not None:
                 x = float(env.data.qpos[rail_qpos_adr])
-                pitch = float(env.data.qpos[pitch_qpos_adr])
-                z = float(env.data.qpos[height_qpos_adr])
+                #pitch = float(env.data.qpos[pitch_qpos_adr])
+                #z = float(env.data.qpos[height_qpos_adr])
                 raw_max_error = float(np.max(np.abs(last_control.position_error)))
                 pd_max_error = min(raw_max_error, 0.60)
+                if stand_out.cop_x is None:
+                    cop_text = "None"
+                else:
+                    cop_text = f"{stand_out.cop_x:+.3f}"
+                if stand_out.support_min_x is None or stand_out.support_max_x is None:
+                    support_text = "None"
+                else:
+                    support_text = f"[{stand_out.support_min_x:+.3f}, {stand_out.support_max_x:+.3f}]"
+
                 print(
                     f"t={sim_elapsed:6.2f}s  "
                     f"x={x:+7.3f}m  "
-                    f"pitch={math.degrees(pitch):+7.3f}deg  "
-                    f"pitch_rate={math.degrees(stand_out.pitch_rate):+.1f}deg/s  "
-                    f"z={z:+7.3f}m  "
-                    #f"CPG L/R={last_cpg.left:+.3f}/{last_cpg.right:+.3f}  "
+                    #f"pitch={math.degrees(pitch):+7.3f}deg  "
+                    #f"pitch_rate={math.degrees(stand_out.pitch_rate):+.1f}deg/s  "
+                    #f"z={z:+7.3f}m  "
+                    f"CPG L/R={last_cpg.left:+.3f}/{last_cpg.right:+.3f}  "
                     f"qerr={math.degrees(raw_max_error):+.3f}deg  "
                     f"PDerr<={math.degrees(pd_max_error):+.3f}deg  "
                     f"sat={last_control.saturation_count}/10  "
-                    f"zdot={stand_out.z_velocity:+.3f}  "
+                    #f"zdot={stand_out.z_velocity:+.3f}  "
                     f"dz={stand_out.knee_height_delta:+.3f}  "
                     f"height_integral={standing._height_integral:+.3f}  "
                     f"dhip={math.degrees(stand_out.hip_pitch_delta):+.1f}deg  "
                     f"dfoot={math.degrees(stand_out.foot_pitch_delta):+.1f}deg  "
+                    f"com={stand_out.com_x:+.3f}  "
+                    f"cop={cop_text}  "
+                    f"support={support_text}  "
+                    f"Fn={stand_out.ground_normal_force:.1f}N  "
                 )
                 next_print_time += PRINT_EVERY_S
 
