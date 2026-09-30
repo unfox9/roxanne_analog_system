@@ -32,5 +32,5 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("cpg_left_right.png", dpi=300)
+plt.savefig("./images/cpg_left_right.png", dpi=300)
 plt.show()

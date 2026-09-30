@@ -46,7 +46,7 @@ plt.grid(True)
 plt.tight_layout()
 
 plt.savefig(
-    "cpg_four_populations.png",
+    "./images/cpg_four_populations.png",
     dpi=300,
     bbox_inches="tight",
 )
